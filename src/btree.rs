@@ -6,8 +6,9 @@ use std::mem::{replace, take};
 
 use crate::arr::*;
 
-const DEFAULT_ORDER : usize = 6;
-const ORDER_MAX     : usize = DEFAULT_ORDER * 2 + 1;
+const ORDER     : usize = 3;
+const MAX_KEY   : usize = ORDER * 2;
+const MAX_CHILD : usize = ORDER * 2 + 1;
 
 use Node::*;
 
@@ -16,13 +17,13 @@ use Node::*;
 #[derive(Debug)]
 pub enum Node<K> {
     Seed,
-    Branch { keys: Vec<K>, child: Vec<Node<K>> },
-    Leaf   { keys: Vec<K>                      },
+    Branch { keys: Arr<K, MAX_KEY>, child: Arr<Node<K>, MAX_CHILD> },
+    Leaf   { keys: Arr<K, MAX_KEY>                                 },
 }
 
 impl<K> Node<K> 
 where
-    K: Debug + Ord,
+    K: Debug + Default + Ord,
 {
     fn n_keys(&self) -> usize {
         match self {
@@ -95,7 +96,7 @@ where
                 }
             },
             Seed => { 
-                let mut keys = Vec::with_capacity(d * 2 - 1);
+                let mut keys = Arr::new();
                 keys.push(k);
                 *self = Leaf { keys };
             },
@@ -104,17 +105,12 @@ where
     fn split(&mut self, d: usize) -> Node<K> {
         match self {
             Branch { keys, child } => {
-                let mut k2 = Vec::with_capacity(d * 2 - 1);
-                let mut c2 = Vec::with_capacity(d * 2);
-                
-                keys.drain(d..).for_each(|k| k2.push(k));
-                child.drain(d..).for_each(|c| c2.push(c));
-                
+                let mut k2 = keys.split();
+                let mut c2 = child.split();
                 Branch { keys: k2, child: c2 }
             },
             Leaf { keys } => {
-                let mut k2 = Vec::with_capacity(d * 2 - 1);
-                keys.drain(d..).for_each(|k| k2.push(k));
+                let mut k2 = keys.split();
                 Leaf { keys: k2 }
             },
             Seed => panic!("Can't split a Seed."),
@@ -155,14 +151,14 @@ where
         }
     }
     fn merge(&mut self, mut other: Node<K>) {
-        match (self, &mut other) {
+        match (self, other) {
             (Branch { keys: k1, child: c1 }, 
              Branch { keys: k2, child: c2 }) => {
-                k2.drain(..).for_each(|k| k1.push(k));
-                c2.drain(..).for_each(|c| c1.push(c));
+                k1.merge(k2);
+                c1.merge(c2);
              },
              (Leaf { keys: k1 }, Leaf { keys: k2 }) => {
-                k2.drain(..).for_each(|k| k1.push(k));
+                k1.merge(k2);
              },
             _ => panic!("Invalid operands for Node::merge()."),
         }
@@ -210,10 +206,10 @@ pub struct BTree<K> {
 
 impl<K> BTree<K> 
 where
-    K: Debug + Ord,
+    K: Debug + Default + Ord,
 {
     pub fn new() -> Self {
-        Self { order: DEFAULT_ORDER, root: Seed }
+        Self { order: ORDER, root: Seed }
     }
     pub fn with_order(d: usize) -> Self {
         Self { order: d, root: Seed }
@@ -228,8 +224,8 @@ where
         if self.root.full(self.order) {
             let mut ch1   = self.root.take();
             let mut ch2   = ch1.split(self.order);
-            let mut keys  = Vec::with_capacity(2 * self.order - 1);
-            let mut child = Vec::with_capacity(2 * self.order);
+            let mut keys  = Arr::new();
+            let mut child = Arr::new();
             let     key   = ch1.pop_key().unwrap();
             
             if k < key { ch1.insert(k, self.order); } 
