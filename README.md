@@ -13,8 +13,14 @@ as 16 keys and a maximum of 32 keys and 33 child nodes.
 
 Because the tree uses a combination of tree traversal and binary search to
 locate its nodes and keys, the order can be considerably high without 
-sacrificing performance. Traversal is used to locate the nodes while binary 
-search is performed on the internal arrays of the nodes to locate key positions.
+sacrificing the performance of searches. Traversal is used to locate the nodes 
+while binary search is performed on the internal arrays of the nodes to locate 
+key positions. Insertions and deletions will however degrade very slightly as
+the order increases - the internal array is simply that: an array.
+
+So the tree's order can be fine tuned to find the sweet spot for performance.
+Applications that infrequently mutate the tree can benefit from larger orders, 
+while for the opposite case, smaller orders can be set.
 
 ## Example Code
 
