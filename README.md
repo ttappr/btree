@@ -3,7 +3,7 @@
 Work in progress.
 
 An experimental BTree implemented in Rust. Insertion and search work well, and
-key removal works for the most part but needs some finishing work to ensure
+key removal works for the most part but needs some finishing touches to ensure
 the tree remains properly balanced during the operation.
 
 An interesting feature of this implementation is it allows the user to specify
