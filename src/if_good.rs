@@ -1,9 +1,8 @@
 
 use std::marker::Sized;
 
-/// Trait to add methods to `Option` and `Result` that get called when the
-/// respective values of each are `Some` and `Ok`. The callback returns no
-/// value, but otherwise similar to `.map()`.
+/// Trait to add methods to `Result` that adds methods similar to `.map()`
+/// and `.map_or_else()`, but don't return a value.
 ///
 pub(crate) trait IfOK<T, E> {
     fn if_ok<F>(self, _f: F)
@@ -17,12 +16,16 @@ pub(crate) trait IfOK<T, E> {
         G: FnMut(E),
         Self: Sized;
 }
+
+/// Trait to add methods to `Option` similar to `.map()` and `.map_or_else()`
+/// but don't return a value.
+///
 pub(crate) trait IfSome<T> {
     fn if_some<F>(self, _f: F)
     where 
         F: FnMut(T),
         Self: Sized;
-        
+
     fn if_some_else<F, G>(self, _f: F, _g: G)
     where
         F: FnMut(T),
@@ -41,6 +44,12 @@ impl<T> IfSome<T> for Option<T> {
     {
         if let Some(v) = self { f(v); }
     }
+
+    /// Similar to `.map_or_else()`. When the `Option` is of the `Some` variant,
+    /// the closure, `f()` will be invoked with the value, consuming it.
+    /// When an `Option` is of the `None` variant, `g()` is invoked which takes
+    /// no parameters.
+    /// 
     fn if_some_else<F, G>(self, mut f: F, mut g: G) 
     where 
         F: FnMut(T),
@@ -65,6 +74,10 @@ impl<T, E> IfOK<T, E> for Result<T, E> {
         if let Ok(v) = self { f(v); }
     }
 
+    /// IF the `Result` this is invoked on is `Ok`, `f()` is invoked with the
+    /// value, consuming it. If the `Result` is the `Err` variant, `g()` is
+    /// invoked passing to it the error value, consuming it.
+    /// 
     fn if_ok_else<F, G>(self, mut f: F, mut g: G) 
     where 
         F: FnMut(T),
