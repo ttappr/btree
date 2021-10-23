@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use std::mem::{replace, take};
 
 use crate::arr::*;
+use crate::if_good::*;
 
 const ORDER     : usize = 3;
 const MAX_KEY   : usize = ORDER * 2;
@@ -53,7 +54,7 @@ where
                         c.traverse(); 
                         println!("{:?}", k);
                     });
-                child.last().map(|ch| ch.traverse());
+                child.last().if_some(|ch| ch.traverse());
             },
             Leaf { keys } => {
                 keys.into_iter().for_each(|k| println!("{:?}", k));
@@ -82,7 +83,7 @@ where
                         if child[i].full(d) {
                             let ch = child[i].split(d);
                             child.insert(i + 1, ch);
-                            child[i].pop_key().map(|k| keys.insert(i, k));
+                            child[i].pop_key().if_some(|k| keys.insert(i, k));
                         }
                         child[i].insert(k, d);
                     }, 
@@ -249,6 +250,14 @@ where
     }
 }
 
+impl<K> Default for BTree<K> 
+where
+    K: Debug + Default + Ord,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 
 #[cfg(test)]

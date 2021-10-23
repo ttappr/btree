@@ -1,5 +1,6 @@
 
 mod btree;
+mod if_good;
 mod arr;
 
 pub use crate::btree::*;
