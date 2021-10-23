@@ -54,7 +54,7 @@ where
                         c.traverse(); 
                         println!("{:?}", k);
                     });
-                child.last().if_some(|ch| ch.traverse());
+                child.last().if_some(Self::traverse);
             },
             Leaf { keys } => {
                 keys.into_iter().for_each(|k| println!("{:?}", k));
@@ -262,7 +262,14 @@ pub fn btree_order_3<K>() -> BTree<K, 6, 7>
 where
     K: Debug + Default + Ord,
 {
-    BTree::<K, 6, 7>::new()
+    BTree::new()
+}
+
+pub fn btree_order_6<K>() -> BTree<K, 12, 13>
+where
+    K: Debug + Default + Ord,
+{
+    BTree::new()
 }
 
 #[cfg(test)]
