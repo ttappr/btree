@@ -354,9 +354,13 @@ where
 /// 
 #[macro_export]
 macro_rules! btree_order {
-    ($order:expr) => {
+    ($order:expr) => {{
+        if $order > 128 { 
+            panic!("The selected order of the tree is too large ({}). `BTree` 
+                   supports orders up to 128.", $order); 
+        }
         BTree::<_, {$order * 2}, {$order * 2 + 1}>::new()
-    };
+    }};
     () => {
         BTree::<_, 32, 33>::new()
     }
