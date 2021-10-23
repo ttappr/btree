@@ -10,7 +10,7 @@ use crate::if_good::*;
 use Node::*;
 
 
-/// Creates a new BTree of the order specified by `$order`. If `$order` isn't
+/// Creates a new `BTree` of the order specified by `$order`. If `$order` isn't
 /// specified, a tree of default order 16 is created.
 /// 
 #[macro_export]
@@ -38,9 +38,9 @@ macro_rules! btree_order {
 /// 
 /// # Generic Parameters
 /// * `K`   - The key type.
-/// * `M`   - The maximum number of keys of a node (must be 'order' * 2).
+/// * `M`   - The maximum number of keys of a node (must be `order * 2`).
 /// * `N`   - The maximum number of children of any node 
-///           (must be 'order' * 2 + 1).
+///           (must be `order * 2 + 1`).
 /// 
 #[derive(Debug)]
 pub struct BTree<K, const M: usize, const N: usize> {
@@ -120,14 +120,8 @@ where
 }
 
 
-/// The node type of the tree. The 'order' of the tree is defined as the minimum
-/// number of keys that can populate a node. The maximum number of keys (`M`) 
-/// must be `order * 2`, and the maximum number of children (`N`) must be 
-/// `order * 2 + 1`.
-/// 
-/// The *order* of the tree can be considerably large (up to 128) as the 
-/// operations on the internal array of the node use binary search to locate
-/// keys.
+/// The node type of the tree. The bulk of the tree's functionality is coded
+/// within this class.
 /// 
 /// # Variants
 /// * `Seed`    - Represents an empty node.
@@ -170,6 +164,9 @@ where
         }
     }
 
+    /// Removes the element at index 0 and returns it if it exists; `None` is
+    /// returned otherwise.
+    /// 
     fn pop_front_key(&mut self) -> Option<K> {
         match self {
             Branch { keys, child } => keys.pop_front(),
