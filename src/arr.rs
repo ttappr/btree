@@ -6,13 +6,11 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use array_macro::array;
 
-/// An array object that uses the least memory possible. The generic 
-/// parameter `S` determines the size of the internal array, which should be
-/// no larger than 256. The number of elements in the array is represented by
-/// a single `u8` value. The overhead for this array type is only 9 bytes
-/// (Box pointer + size byte); the overhead for `Vec` would be 24 bytes,
-/// which includes a pointer to an array (8 bytes), the size (8 bytes), and
-/// reference to an allocator (8 bytes).
+/// An custom array object to hold the keys and chilren of the BTree.
+/// This array object uses the least amount of memory possible. The generic 
+/// parameter `S` determines the size of the internal array, WHICH MUST BE
+/// NO LARGER THAN 256 - the lenth of the array is represented as a single 
+/// `u8` value.
 /// 
 pub struct Arr<T, const S: usize> {
     arr: Box<([T; S], u8)>,
@@ -21,7 +19,7 @@ pub struct Arr<T, const S: usize> {
 impl<T, const S: usize> Arr<T, S> 
 where 
     T: Default,
-{
+{    
     /// Creates a new empty instance of an `Arr`.
     /// 
     pub(crate) fn new() -> Self {
@@ -32,6 +30,11 @@ where
     /// 
     pub(crate) fn len(&self) -> usize {
         self.arr.1 as usize
+    }
+    
+    /// Returns `true` if array is full; `false` otherwise.
+    pub(crate) fn full(&self) -> bool {
+        self.arr.1 == S as u8
     }
 
     /// Returns `Some(&T)` containing the item at the given index, or `None`
@@ -62,11 +65,10 @@ where
     /// 
     pub(crate) fn split(&mut self) -> Arr<T, S> {
         let mid = self.len() / 2;
-        let len = if self.len() > mid { self.len() - mid } else { 0 };
-        let arr = array![i => if i < mid { self.take(mid + i) } 
-                              else       { T::default()       };
-                         S];
-        self.arr.1 = self.arr.1.min(mid as u8);
+        let len = self.len() - mid;
+        let arr = array![i => if i < len { self.take(mid + i) } 
+                              else       { T::default()       }; S];
+        self.arr.1 = mid as u8;
         Self { arr: Box::new((arr, len as u8)) }
     }
 
@@ -74,7 +76,8 @@ where
     /// 
     pub(crate) fn merge(&mut self, mut other: Arr<T, S>) {
         assert!(other.len() + self.len() <= S, 
-                "Merging both `Arr` objects would result in an array > S ({}).",
+                "Merging both `Arr` objects would result in an array larger 
+                than the limit `S` ({}).",
                 S);
         for (i, j) in (self.len()..S).zip(0..other.len()) {
             self.arr.0[i] = other.take(j);
@@ -105,10 +108,12 @@ where
     /// Inserts the given element into the array at the given index.
     /// 
     pub(crate) fn insert(&mut self, idx: usize, elm: T) {    
-        assert!(idx <= self.len(), "Insertion index ({}) > number of elements 
-                                   in array ({}).", idx, self.len());
-        assert!(self.len() < S,    "Attempt to insert into an `Arr` already 
-                                   filled to capacity ({}).", S);
+        assert!(idx <= self.len(), 
+                "Insertion index ({}) > number of elements in array ({}).", 
+                idx, self.len());
+        assert!(!self.full(),    
+                "Attempt to insert into an `Arr` already filled to capacity 
+                ({}).", S);
         for i in (idx..self.len()).rev() {
             self.arr.0[i + 1] = self.take(i)
         }
@@ -120,10 +125,11 @@ where
     /// debug build if index is beyond current number of elements.
     ///
     pub(crate) fn remove(&mut self, idx: usize) -> T {
-        assert!(idx < self.len(), "Attempt to remove item at {} from array of 
-                                  length {}.", idx, self.len());
+        assert!(idx < self.len(), 
+                "Attempt to remove item at {} from array of length {}.", 
+                idx, self.len());
         let ret = self.take(idx);
-        for i in (idx..self.len()) {
+        for i in (idx..self.len() - 1) {
             self.arr.0[i] = self.take(i + 1);
         }
         self.arr.1 -= 1;
@@ -186,10 +192,6 @@ where
     fn into_iter(self) -> Self::IntoIter {
         ArrIter(self, 0)
     }
-
-    // TODO - Review this implementation and determine if it will be affected
-    //        by the v2021 change coming that affects the way primitive arrays 
-    //        currently implement of this trait.
 }
 
 impl<T, const S: usize> Deref for Arr<T, S> {
@@ -224,5 +226,109 @@ where
     /// 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.arr.0[0..self.len()].iter()).finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::arr::*;
+
+    /// Compare two iterable objects, `$a` and `$b`. On failure include
+    /// failure message, `$f`, in the test output.
+    ///    
+    macro_rules! cmp {
+        ($a:expr, $b:expr, $f:literal) => {
+            assert_eq!($a.len(), $b.len(), "{} Lengths were wrong.", $f);
+            $a.iter().zip($b).for_each(|t| assert_eq!(t.0, t.1, $f));
+        }
+    }
+    
+    #[test]
+    fn insert() {
+        let mut a  = Arr::<_, 10>::new();
+        let mut b  = Vec::new();
+        let     n1 = [1, 2, 3, 4];
+        let     n2 = [5, 6, 7, 8];
+        
+        // Insert all at 0 and compare.
+        for &n in n1.iter() {
+            a.insert(0, n);
+            b.insert(0, n);
+        }
+        cmp!(&a, &b, "Insertion at 0 index failed.");
+        
+        // Insert into `a` interspersing the n1 (rev) and n2 values.
+        for (&n, i) in n2.iter().zip((0..).step_by(2)) {
+            a.insert(i, n);
+            b.insert(i, n);
+        }
+        cmp!(&a, &b, "Inserting at indices incrementing by 2 failed.");
+    }
+
+    #[test]
+    fn remove() {
+        let mut a = Arr::<_, 10>::new();
+        let mut b = (0..10).collect::<Vec<_>>();
+        
+        // Fill the array with elements from `n` and compare.
+        b.iter().for_each(|&n| a.push(n));
+        cmp!(&a, &b, "Push operations failed.");
+        
+        // Remove element at 0 and verify effect.
+        assert_eq!(a.remove(0), 0);
+        b.remove(0);
+        cmp!(&b, &b, "Removing at 0 failed.");
+        
+        // Remove every other element and verify effect.
+        for i in (0..5).step_by(2) {
+            let r1 = a.remove(i);
+            let r2 = b.remove(i);
+            assert_eq!(r1, r2);
+        }
+        cmp!(&a, &b, "Removing at every other element failed.");
+    }
+    
+    #[test]
+    fn split() {
+        let mut a = Arr::<_, 10>::new();
+        
+        // Fill array 0 to 5 twice, split, then verify.
+        (0..5).chain(0..5).for_each(|n| a.push(n));
+        
+        let mut b = a.split();
+
+        cmp!(&a, &b, "Split evenly operation didn't work correctly.");
+        
+        b = a.split();
+        
+        cmp!(&a, &[0, 1   ], "Splitting odd number of elements failed case 1.");
+        cmp!(&b, &[2, 3, 4], "Splitting odd number of elements failed case 2.");
+    }
+    
+    #[test]
+    fn merge() {
+        {
+            let mut a = Arr::<_, 10>::new();
+            let mut b = Arr::<_, 10>::new();
+            let mut v = (0..5).chain(0..5).collect::<Vec<_>>();
+            for n in 0..5 {
+                a.push(n);
+                b.push(n);
+            }
+            a.merge(b);
+            cmp!(&a, &v, "Failed to merge two equal length arrays.");
+        }
+        // Try various sizes of arrays while merging.
+        for (r1, r2) in [(0..2, 0..5), (0..5, 0..2), 
+                         (0..1, 0..8), (0..8, 0..1)]
+        {
+            let mut a = Arr::<_, 10>::new();
+            let mut b = Arr::<_, 10>::new();
+            let mut v = r1.clone().chain(r2.clone()).collect::<Vec<_>>();
+            r1.for_each(|n| a.push(n));
+            r2.for_each(|n| b.push(n));
+            a.merge(b);
+            cmp!(&a, &v, "Failed to merge two unequal length arrays.");
+        }
     }
 }
