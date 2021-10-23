@@ -10,12 +10,122 @@ use crate::if_good::*;
 use Node::*;
 
 
+/// Creates a new BTree of the order specified by `$order`. If `$order` isn't
+/// specified, a tree of default order 16 is created.
+/// 
+#[macro_export]
+macro_rules! btree_order {
+    ($order:expr) => {{
+        if $order > 128 { 
+            panic!("The selected order of the tree is too large ({}). `BTree` 
+                   supports orders up to 128.", $order); 
+        }
+        BTree::<_, {$order * 2}, {$order * 2 + 1}>::new()
+    }};
+    () => {
+        BTree::<_, 32, 33>::new()
+    }
+}
+
+/// The main class for the tree. Holds the root node. The *order* of the tree is
+/// defined as the minimum number of keys that can populate a node. The maximum
+/// number of keys (`M`) must be `order * 2`, and the maximum number of children
+/// (`N`) must be `order * 2 + 1`.
+/// 
+/// The *order* of the tree can be considerably large (up to 128) as the 
+/// operations on the internal array of the node use binary search to locate
+/// keys.
+/// 
+/// # Generic Parameters
+/// * `K`   - The key type.
+/// * `M`   - The maximum number of keys of a node (must be 'order' * 2).
+/// * `N`   - The maximum number of children of any node 
+///           (must be 'order' * 2 + 1).
+/// 
+#[derive(Debug)]
+pub struct BTree<K, const M: usize, const N: usize> {
+    root  : Node<K, M, N>,
+}
+
+impl<K, const M: usize, const N: usize> BTree<K, M, N> 
+where
+    K: Debug + Default + Ord,
+{
+    /// Returns a new `BTree` with a `Seed` as root.
+    /// 
+    pub fn new() -> Self {
+        Self { root: Seed }
+    }
+
+    /// A temporary method to traverse the tree and print out the nodes. To
+    /// be removed at some point.
+    /// TODO - When removing this, also remove the `Debug` constraint on `K`.
+    /// 
+    fn traverse(&self) {
+        self.root.traverse();
+    }
+
+    /// Locates the key that matches `k` and returns a reference to it if it
+    /// exists within the tree; `None` is returned otherwise.
+    /// 
+    pub fn search(&self, k: &K) -> Option<&K> {
+        self.root.search(k)
+    }
+
+    /// Inserts the given key in the tree, or updates the matching key if 
+    /// already present.
+    /// 
+    pub fn insert(&mut self, k: K) {
+        if self.root.full() {
+            let mut ch1   = self.root.take();
+            let mut ch2   = ch1.split();
+            let mut keys  = Arr::new();
+            let mut child = Arr::new();
+            let     key   = ch1.pop_key().unwrap();
+            
+            if k < key { ch1.insert(k); } 
+            else       { ch2.insert(k); }
+            
+            keys.push(key);
+            child.push(ch1);
+            child.push(ch2);
+            
+            self.root = Branch { keys, child };
+        } else {
+            self.root.insert(k);
+        }
+    }
+
+    /// Removes the key matching `k` from the tree and returns it if it exits;
+    /// otherwise `None` is returned.
+    /// 
+    pub fn remove(&mut self, k: &K) -> Option<K> {
+        let key = self.root.remove(k);
+        if self.root.n_keys() == 0 {
+            self.root = Seed;
+        }
+        key
+    }
+}
+
+impl<K, const M: usize, const N: usize> Default for BTree<K, M, N> 
+where
+    K: Debug + Default + Ord,
+{
+    /// Returns a new empty BTree.
+    /// 
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
 /// The node type of the tree. The 'order' of the tree is defined as the minimum
 /// number of keys that can populate a node. The maximum number of keys (`M`) 
-/// must be 'order' * 2, and the maximum number of children (`N`) must be 
-/// 'order' * 2 + 1.
+/// must be `order * 2`, and the maximum number of children (`N`) must be 
+/// `order * 2 + 1`.
 /// 
-/// The 'order' of the tree can be considerably large (up to 128) as the 
+/// The *order* of the tree can be considerably large (up to 128) as the 
 /// operations on the internal array of the node use binary search to locate
 /// keys.
 /// 
@@ -26,8 +136,8 @@ use Node::*;
 /// 
 /// # Generic Parameters
 /// * `K`   - The key type.
-/// * `M`   - The maximum number of keys (must be 'order' * 2).
-/// * `N`   - The maximum number of children (must be 'order' * 2 + 1).
+/// * `M`   - The maximum number of keys (must be `order * 2`).
+/// * `N`   - The maximum number of children (must be `order * 2 + 1`).
 /// 
 #[derive(Debug)]
 pub enum Node<K, const M: usize, const N: usize> {
@@ -56,6 +166,14 @@ where
         match self {
             Branch { keys, child } => keys.pop(),
             Leaf   { keys        } => keys.pop(),
+            Seed                   => None,
+        }
+    }
+
+    fn pop_front_key(&mut self) -> Option<K> {
+        match self {
+            Branch { keys, child } => keys.pop_front(),
+            Leaf   { keys        } => keys.pop_front(),
             Seed                   => None,
         }
     }
@@ -248,7 +366,7 @@ where
                 Branch { keys, child } => {
                     curr = &mut child[0];
                 },
-                Leaf { keys } => { key = Some(keys.remove(0)); break; },
+                Leaf { keys } => { key = keys.pop_front(); break; },
                 Seed => { break; }
             }
         }
@@ -261,108 +379,6 @@ impl<K, const M: usize, const N: usize> Default for Node<K, M, N> {
     /// 
     fn default() -> Self {
         Seed
-    }
-}
-
-/// The main class for the tree. Holds the root node.
-/// 
-/// # Generic Parameters
-/// * `K`   - The key type.
-/// * `M`   - The maximum number of keys of a node (must be 'order' * 2).
-/// * `N`   - The maximum number of children of any node 
-///           (must be 'order' * 2 + 1).
-/// 
-#[derive(Debug)]
-pub struct BTree<K, const M: usize, const N: usize> {
-    root  : Node<K, M, N>,
-}
-
-impl<K, const M: usize, const N: usize> BTree<K, M, N> 
-where
-    K: Debug + Default + Ord,
-{
-    /// Returns a new `BTree` with a `Seed` as root.
-    /// 
-    pub fn new() -> Self {
-        Self { root: Seed }
-    }
-
-    /// A temporary method to traverse the tree and print out the nodes. To
-    /// be removed at some point.
-    /// TODO - When removing this, also remove the `Debug` constraint on `K`.
-    /// 
-    fn traverse(&self) {
-        self.root.traverse();
-    }
-
-    /// Locates the key that matches `k` and returns a reference to it if it
-    /// exists within the tree; `None` is returned otherwise.
-    /// 
-    pub fn search(&self, k: &K) -> Option<&K> {
-        self.root.search(k)
-    }
-
-    /// Inserts the given key in the tree, or updates the matching key if 
-    /// already present.
-    /// 
-    pub fn insert(&mut self, k: K) {
-        if self.root.full() {
-            let mut ch1   = self.root.take();
-            let mut ch2   = ch1.split();
-            let mut keys  = Arr::new();
-            let mut child = Arr::new();
-            let     key   = ch1.pop_key().unwrap();
-            
-            if k < key { ch1.insert(k); } 
-            else       { ch2.insert(k); }
-            
-            keys.push(key);
-            child.push(ch1);
-            child.push(ch2);
-            
-            self.root = Branch { keys, child };
-        } else {
-            self.root.insert(k);
-        }
-    }
-
-    /// Removes the key matching `k` from the tree and returns it if it exits;
-    /// otherwise `None` is returned.
-    /// 
-    pub fn remove(&mut self, k: &K) -> Option<K> {
-        let key = self.root.remove(k);
-        if self.root.n_keys() == 0 {
-            self.root = Seed;
-        }
-        key
-    }
-}
-
-impl<K, const M: usize, const N: usize> Default for BTree<K, M, N> 
-where
-    K: Debug + Default + Ord,
-{
-    /// Returns a new empty BTree.
-    /// 
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Creates a new BTree of the order specified by `$order`. If `$order` isn't
-/// specified, a tree of default order 16 is created.
-/// 
-#[macro_export]
-macro_rules! btree_order {
-    ($order:expr) => {{
-        if $order > 128 { 
-            panic!("The selected order of the tree is too large ({}). `BTree` 
-                   supports orders up to 128.", $order); 
-        }
-        BTree::<_, {$order * 2}, {$order * 2 + 1}>::new()
-    }};
-    () => {
-        BTree::<_, 32, 33>::new()
     }
 }
 

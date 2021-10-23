@@ -6,10 +6,10 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use array_macro::array;
 
-/// An custom array object to hold the keys and chilren of the BTree.
+/// A custom array object to hold the keys and children of the BTree.
 /// This array object uses the least amount of memory possible. The generic 
 /// parameter `S` determines the size of the internal array, WHICH MUST BE
-/// NO LARGER THAN 256 - the lenth of the array is represented as a single 
+/// NO LARGER THAN 256, as the length of the array is represented as a single 
 /// `u8` value.
 /// 
 pub struct Arr<T, const S: usize> {
@@ -33,12 +33,14 @@ where
     }
     
     /// Returns `true` if array is full; `false` otherwise.
+    /// 
     pub(crate) fn full(&self) -> bool {
         self.arr.1 == S as u8
     }
 
-    /// Returns `Some(&T)` containing the item at the given index, or `None`
-    /// if the index is larger than the number of elements.
+    /// Returns the element at the given index if one is present, or `None`
+    /// if the index is larger than the number of elements as given by 
+    /// `.len()`.
     /// 
     pub(crate) fn get(&self, idx: usize) -> Option<&T> {
         if idx < self.len() { Some(&self.arr.0[idx]) } 
@@ -59,9 +61,9 @@ where
         take(&mut self.arr.0[idx])
     }
 
-    /// Splits the `Arr` into two and returns an `Arr` containing the elements
-    /// from the original starting at index `.len() / 2`. The elements included
-    /// in the split `Arr` are removed from the original `Arr`.
+    /// Splits the `Arr` in two and returns a new `Arr` containing the elements
+    /// taken from the original starting at index `.len() / 2`. The elements
+    /// included in the new `Arr` are removed from the original.
     /// 
     pub(crate) fn split(&mut self) -> Arr<T, S> {
         let mid = self.len() / 2;
@@ -72,7 +74,7 @@ where
         Self { arr: Box::new((arr, len as u8)) }
     }
 
-    /// Merges elements from `other` into `self`.
+    /// Transfers all elements from `other` into `self` consuming `other`.
     /// 
     pub(crate) fn merge(&mut self, mut other: Arr<T, S>) {
         assert!(other.len() + self.len() <= S, 
@@ -105,7 +107,19 @@ where
         }
     }
 
-    /// Inserts the given element into the array at the given index.
+    /// Removes and returns the first element in the array if there are elements
+    /// in the array; `None` otherwise.
+    /// 
+    pub(crate) fn pop_front(&mut self) -> Option<T> {
+        if self.arr.1 > 0 {
+            Some(self.remove(0))
+        } else {
+            None
+        }
+    }
+
+    /// Inserts the given element into the array at the given index. This is
+    /// an `O(S)` operation.
     /// 
     pub(crate) fn insert(&mut self, idx: usize, elm: T) {    
         assert!(idx <= self.len(), 
@@ -122,7 +136,8 @@ where
     }
 
     /// Removes the element at the given index and returns it. Will panic in
-    /// debug build if index is beyond current number of elements.
+    /// debug build if index is beyond current number of elements. This is an
+    /// `O(S)` operation.
     ///
     pub(crate) fn remove(&mut self, idx: usize) -> T {
         assert!(idx < self.len(), 
@@ -161,7 +176,7 @@ where
     }
 }
 
-/// A custom iterator object for `&Arr`.
+/// A custom iterator object for `&Arr` (references).
 /// 
 pub struct ArrIter<'a, T, const S: usize>(&'a Arr<T, S>, usize);
 
@@ -171,7 +186,7 @@ where
 {
     type Item = &'a T;
 
-    /// Returns the next item in `Arr`.
+    /// Returns the next item in `Arr` as a reference.
     /// 
     fn next(&mut self) -> Option<Self::Item> {
         let res = self.0.get(self.1);
@@ -234,12 +249,18 @@ mod tests {
     use crate::arr::*;
 
     /// Compare two iterable objects, `$a` and `$b`. On failure include
-    /// failure message, `$f`, in the test output.
+    /// failure message, `$f`, in the test output. `$f` is treated as a
+    /// format string and can be followed by 0 or more printable parameters.
+    /// ```
+    /// //           $a       $b       $f              ...
+    /// macro_rules!(&[1, 2], &[1, 2], "Failed at {}", 42);
+    /// ```
     ///    
     macro_rules! cmp {
-        ($a:expr, $b:expr, $f:literal) => {
-            assert_eq!($a.len(), $b.len(), "{} Lengths were wrong.", $f);
-            $a.iter().zip($b).for_each(|t| assert_eq!(t.0, t.1, $f));
+        ($a:expr, $b:expr, $f:literal $(, $g:literal)*) => {
+            assert_eq!($a.len(), $b.len(), "{} Lengths were wrong.", 
+                       $f $(, $g)*);
+            $a.iter().zip($b).for_each(|t| assert_eq!(t.0, t.1, $f $(, $g)*));
         }
     }
     

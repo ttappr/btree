@@ -1,8 +1,8 @@
 
 use std::marker::Sized;
 
-/// Trait to add methods to `Result` that adds methods similar to `.map()`
-/// and `.map_or_else()`, but don't return a value.
+/// Trait to add methods to `Result` similar to `.map()` and `.map_or_else()`, 
+/// but don't return a value.
 ///
 pub(crate) trait IfOK<T, E> {
     fn if_ok<F>(self, _f: F)
@@ -35,7 +35,7 @@ pub(crate) trait IfSome<T> {
 
 impl<T> IfSome<T> for Option<T> {
     /// When applied to an `Option`, the provided callback is called when
-    /// the `Option` is the `Some` variant, passing its wrapped value to  the
+    /// the `Option` is the `Some` variant, passing its wrapped value to the
     /// callback.
     ///
     fn if_some<F>(self, mut f: F)
@@ -64,7 +64,7 @@ impl<T> IfSome<T> for Option<T> {
 
 impl<T, E> IfOK<T, E> for Result<T, E> {
     /// When applied to a `Result`, the provided callback is called when
-    /// the `Result` is the `Ok` variant, passing its wrapped value to  the
+    /// the `Result` is the `Ok` variant, passing its wrapped value to the
     /// callback.
     ///
     fn if_ok<F>(self, mut f: F) 
@@ -74,7 +74,7 @@ impl<T, E> IfOK<T, E> for Result<T, E> {
         if let Ok(v) = self { f(v); }
     }
 
-    /// IF the `Result` this is invoked on is `Ok`, `f()` is invoked with the
+    /// If the `Result` this is invoked on is `Ok`, `f()` is invoked with the
     /// value, consuming it. If the `Result` is the `Err` variant, `g()` is
     /// invoked passing to it the error value, consuming it.
     /// 
