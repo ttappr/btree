@@ -7,22 +7,18 @@ use std::mem::{replace, take};
 use crate::arr::*;
 use crate::if_good::*;
 
-const ORDER     : usize = 3;
-const MAX_KEY   : usize = ORDER * 2;
-const MAX_CHILD : usize = ORDER * 2 + 1;
-
 use Node::*;
 
 
 
 #[derive(Debug)]
-pub enum Node<K> {
+pub enum Node<K, const M: usize, const N: usize> {
     Seed,
-    Branch { keys: Arr<K, MAX_KEY>, child: Arr<Node<K>, MAX_CHILD> },
-    Leaf   { keys: Arr<K, MAX_KEY>                                 },
+    Branch { keys: Arr<K, M>, child: Arr<Node<K, M, N>, N> },
+    Leaf   { keys: Arr<K, M>                               },
 }
 
-impl<K> Node<K> 
+impl<K, const M: usize, const N: usize> Node<K, M, N> 
 where
     K: Debug + Default + Ord,
 {
@@ -40,8 +36,12 @@ where
             Seed                   => None,
         }
     }
-    fn full(&self, d: usize) -> bool {
-        self.n_keys() >= 2 * d - 1
+    fn full(&self) -> bool {
+        match self {
+            Branch { keys, child } => keys.full(),
+            Leaf   { keys        } => keys.full(),
+            Seed                   => false,
+        }
     }
     fn take(&mut self) -> Self {
         take(self)
@@ -75,17 +75,17 @@ where
             Seed => None,
         }
     }
-    fn insert(&mut self, k: K, d: usize) {
+    fn insert(&mut self, k: K) {
         match self {
             Branch { keys, child } => {
                 match keys.binary_search(&k) {
                     Err(i) => {
-                        if child[i].full(d) {
-                            let ch = child[i].split(d);
+                        if child[i].full() {
+                            let ch = child[i].split();
                             child.insert(i + 1, ch);
                             child[i].pop_key().if_some(|k| keys.insert(i, k));
                         }
-                        child[i].insert(k, d);
+                        child[i].insert(k);
                     }, 
                     Ok(i) => { keys[i] = k; }
                 }
@@ -103,7 +103,7 @@ where
             },
         }
     }
-    fn split(&mut self, d: usize) -> Node<K> {
+    fn split(&mut self) -> Node<K, M, N> {
         match self {
             Branch { keys, child } => {
                 let mut k2 = keys.split();
@@ -117,16 +117,16 @@ where
             Seed => panic!("Can't split a Seed."),
         }
     }
-    fn remove(&mut self, k: &K, d: usize) -> Option<K> {
+    fn remove(&mut self, k: &K) -> Option<K> {
         match self {
             Branch { keys, child } => {
                 match keys.binary_search(k) {
                     Ok(i) => {
-                        if child[i].n_keys() >= d {
+                        if child[i].n_keys() >= M / 2 {
                             let pred = child[i].max_key();
                             Some(replace(&mut keys[i], pred))
                         } 
-                        else if child[i + 1].n_keys() >= d {
+                        else if child[i + 1].n_keys() >= M / 2 {
                             let succ = child[i + 1].min_key();
                             Some(replace(&mut keys[i], succ))
                         } 
@@ -141,7 +141,7 @@ where
                         }
                     },
                     Err(i) => {
-                        child[i].remove(k, d)
+                        child[i].remove(k)
                     },
                 }
             },
@@ -151,7 +151,7 @@ where
             Seed => None,
         }
     }
-    fn merge(&mut self, mut other: Node<K>) {
+    fn merge(&mut self, mut other: Node<K, M, N>) {
         match (self, other) {
             (Branch { keys: k1, child: c1 }, 
              Branch { keys: k2, child: c2 }) => {
@@ -193,27 +193,26 @@ where
         key.unwrap()
     }
 }
-impl<K> Default for Node<K> {
+impl<K, const M: usize, const N: usize> Default for Node<K, M, N> {
     fn default() -> Self {
         Seed
     }
 }
 
 #[derive(Debug)]
-pub struct BTree<K> {
-    order : usize,
-    root  : Node<K>,
+pub struct BTree<K, const M: usize, const N: usize> {
+    root  : Node<K, M, N>,
 }
 
-impl<K> BTree<K> 
+impl<K, const M: usize, const N: usize> BTree<K, M, N> 
 where
     K: Debug + Default + Ord,
 {
     pub fn new() -> Self {
-        Self { order: ORDER, root: Seed }
+        Self { root: Seed }
     }
     pub fn with_order(d: usize) -> Self {
-        Self { order: d, root: Seed }
+        Self { root: Seed }
     }
     fn traverse(&self) {
         self.root.traverse();
@@ -222,15 +221,15 @@ where
         self.root.search(k)
     }
     pub fn insert(&mut self, k: K) {
-        if self.root.full(self.order) {
+        if self.root.full() {
             let mut ch1   = self.root.take();
-            let mut ch2   = ch1.split(self.order);
+            let mut ch2   = ch1.split();
             let mut keys  = Arr::new();
             let mut child = Arr::new();
             let     key   = ch1.pop_key().unwrap();
             
-            if k < key { ch1.insert(k, self.order); } 
-            else       { ch2.insert(k, self.order); }
+            if k < key { ch1.insert(k); } 
+            else       { ch2.insert(k); }
             
             keys.push(key);
             child.push(ch1);
@@ -238,11 +237,11 @@ where
             
             self.root = Branch { keys, child };
         } else {
-            self.root.insert(k, self.order);
+            self.root.insert(k);
         }
     }
     pub fn remove(&mut self, k: &K) -> Option<K> {
-        let key = self.root.remove(k, self.order);
+        let key = self.root.remove(k);
         if self.root.n_keys() == 0 {
             self.root = Seed;
         }
@@ -250,7 +249,7 @@ where
     }
 }
 
-impl<K> Default for BTree<K> 
+impl<K, const M: usize, const N: usize> Default for BTree<K, M, N> 
 where
     K: Debug + Default + Ord,
 {
@@ -259,6 +258,12 @@ where
     }
 }
 
+pub fn btree_order_3<K>() -> BTree<K, 6, 7> 
+where
+    K: Debug + Default + Ord,
+{
+    BTree::<K, 6, 7>::new()
+}
 
 #[cfg(test)]
 mod tests {
@@ -266,7 +271,7 @@ mod tests {
     
     #[test]
     fn insert() {
-        let mut t = BTree::with_order(3); // A B-Tree with minimum order 3
+        let mut t = btree_order_3(); // A B-Tree with minimum order 3
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n);
         }
@@ -275,7 +280,7 @@ mod tests {
     }
     #[test] 
     fn remove() {
-        let mut t = BTree::with_order(3);
+        let mut t = btree_order_3();
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n);
         }
@@ -291,7 +296,7 @@ mod tests {
     
     #[test]
     fn search() {
-        let mut t = BTree::with_order(3); // A B-Tree with minimum order 3
+        let mut t = btree_order_3();
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n);
         }
