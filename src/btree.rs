@@ -10,7 +10,25 @@ use crate::if_good::*;
 use Node::*;
 
 
-
+/// The node type of the tree. The 'order' of the tree is defined as the minimum
+/// number of keys that can populate a node. The maximum number of keys (`M`) 
+/// must be 'order' * 2, and the maximum number of children (`N`) must be 
+/// 'order' * 2 + 1.
+/// 
+/// The 'order' of the tree can be considerably large (up to 128) as the 
+/// operations on the internal array of the node use binary search to locate
+/// keys.
+/// 
+/// # Variants
+/// * `Seed`    - Represents an empty node.
+/// * `Branch`  - A non-terminal node.
+/// * `Leaf`    - A terminal node.
+/// 
+/// # Generic Parameters
+/// * `K`   - The key type.
+/// * `M`   - The maximum number of keys (must be 'order' * 2).
+/// * `N`   - The maximum number of children (must be 'order' * 2 + 1).
+/// 
 #[derive(Debug)]
 pub enum Node<K, const M: usize, const N: usize> {
     Seed,
@@ -22,6 +40,8 @@ impl<K, const M: usize, const N: usize> Node<K, M, N>
 where
     K: Debug + Default + Ord,
 {
+    /// Returns the number of keys in the node.
+    /// 
     fn n_keys(&self) -> usize {
         match self {
             Branch { keys, child } => keys.len(),
@@ -29,6 +49,9 @@ where
             Seed                   => 0,
         }
     }
+
+    /// Pops and returns the last key of the node if any keys are present.
+    /// 
     fn pop_key(&mut self) -> Option<K> {
         match self {
             Branch { keys, child } => keys.pop(),
@@ -36,6 +59,9 @@ where
             Seed                   => None,
         }
     }
+
+    /// Reports whether the node has reached the maximum key population.
+    /// 
     fn full(&self) -> bool {
         match self {
             Branch { keys, child } => keys.full(),
@@ -43,9 +69,15 @@ where
             Seed                   => false,
         }
     }
+
+    /// Returns the node, replacing `self` with the `Seed` variant.
+    /// 
     fn take(&mut self) -> Self {
         take(self)
     }
+
+    /// For debugging during development. Prints out the tree.
+    /// 
     fn traverse(&self) {
         match self {
             Branch { keys, child } => {
@@ -62,6 +94,13 @@ where
             seed => { },
         }
     }
+
+    /// Returns a reference to the key matching `k` if it exists in the tree;
+    /// otherwise `None` is returned. Uses a combination of tree traversal,
+    /// to navigate to the right node, then binary search to locate the key
+    /// within the node's internal array. This enables the 'order' of the tree
+    /// to be considerably large without sacrificing performance.
+    /// 
     fn search(&self, k: &K) -> Option<&K> {
         match self {
             Branch { keys, child } => {
@@ -75,6 +114,10 @@ where
             Seed => None,
         }
     }
+
+    /// Inserts the given key into the tree, or updates the existing matching
+    /// key.
+    /// 
     fn insert(&mut self, k: K) {
         match self {
             Branch { keys, child } => {
@@ -103,6 +146,9 @@ where
             },
         }
     }
+
+    /// Splits a node in half, returning a new node containing the larger keys.
+    /// 
     fn split(&mut self) -> Node<K, M, N> {
         match self {
             Branch { keys, child } => {
@@ -117,6 +163,10 @@ where
             Seed => panic!("Can't split a Seed."),
         }
     }
+
+    /// Removes the key that matches `k` from the tree and returns it if it
+    /// exists; otherwise `None` is returned. The tree automatically rebalances.
+    /// 
     fn remove(&mut self, k: &K) -> Option<K> {
         match self {
             Branch { keys, child } => {
@@ -151,6 +201,10 @@ where
             Seed => None,
         }
     }
+
+    /// Combines the current node with `other`. The nodes must be of the same
+    /// variant.
+    /// 
     fn merge(&mut self, mut other: Node<K, M, N>) {
         match (self, other) {
             (Branch { keys: k1, child: c1 }, 
@@ -164,6 +218,10 @@ where
             _ => panic!("Invalid operands for Node::merge()."),
         }
     }
+
+    /// Descends the tree from the current node to find it's maximum key.
+    /// This key is removed from its hosting node and returned.
+    /// 
     fn max_key(&mut self) -> K {
         let mut curr = self; 
         let mut key  = None;
@@ -178,6 +236,10 @@ where
         }
         key.unwrap()
     }
+
+    /// Descends the tree from the current node to find that branch's minimum
+    /// key. The key is removed from the tree and returned.
+    /// 
     fn min_key(&mut self) -> K {
         let mut curr = self;
         let mut key  = None;
@@ -194,11 +256,22 @@ where
     }
 }
 impl<K, const M: usize, const N: usize> Default for Node<K, M, N> {
+
+    /// Returns the default value for `Node`, which is the variant `Seed`.
+    /// 
     fn default() -> Self {
         Seed
     }
 }
 
+/// The main class for the tree. Holds the root node.
+/// 
+/// # Generic Parameters
+/// * `K`   - The key type.
+/// * `M`   - The maximum number of keys of a node (must be 'order' * 2).
+/// * `N`   - The maximum number of children of any node 
+///           (must be 'order' * 2 + 1).
+/// 
 #[derive(Debug)]
 pub struct BTree<K, const M: usize, const N: usize> {
     root  : Node<K, M, N>,
@@ -208,18 +281,30 @@ impl<K, const M: usize, const N: usize> BTree<K, M, N>
 where
     K: Debug + Default + Ord,
 {
+    /// Returns a new `BTree` with a `Seed` as root.
+    /// 
     pub fn new() -> Self {
         Self { root: Seed }
     }
-    pub fn with_order(d: usize) -> Self {
-        Self { root: Seed }
-    }
+
+    /// A temporary method to traverse the tree and print out the nodes. To
+    /// be removed at some point.
+    /// TODO - When removing this, also remove the `Debug` constraint on `K`.
+    /// 
     fn traverse(&self) {
         self.root.traverse();
     }
+
+    /// Locates the key that matches `k` and returns a reference to it if it
+    /// exists within the tree; `None` is returned otherwise.
+    /// 
     pub fn search(&self, k: &K) -> Option<&K> {
         self.root.search(k)
     }
+
+    /// Inserts the given key in the tree, or updates the matching key if 
+    /// already present.
+    /// 
     pub fn insert(&mut self, k: K) {
         if self.root.full() {
             let mut ch1   = self.root.take();
@@ -240,6 +325,10 @@ where
             self.root.insert(k);
         }
     }
+
+    /// Removes the key matching `k` from the tree and returns it if it exits;
+    /// otherwise `None` is returned.
+    /// 
     pub fn remove(&mut self, k: &K) -> Option<K> {
         let key = self.root.remove(k);
         if self.root.n_keys() == 0 {
@@ -253,24 +342,26 @@ impl<K, const M: usize, const N: usize> Default for BTree<K, M, N>
 where
     K: Debug + Default + Ord,
 {
+    /// Returns a new empty BTree.
+    /// 
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub fn btree_order_3<K>() -> BTree<K, 6, 7> 
-where
-    K: Debug + Default + Ord,
-{
-    BTree::new()
+/// Creates a new BTree of the order specified by `$order`. If `$order` isn't
+/// specified, a tree of default order 16 is created.
+/// 
+#[macro_export]
+macro_rules! btree_order {
+    ($order:expr) => {
+        BTree::<_, {$order * 2}, {$order * 2 + 1}>::new()
+    };
+    () => {
+        BTree::<_, 32, 33>::new()
+    }
 }
 
-pub fn btree_order_6<K>() -> BTree<K, 12, 13>
-where
-    K: Debug + Default + Ord,
-{
-    BTree::new()
-}
 
 #[cfg(test)]
 mod tests {
@@ -278,7 +369,7 @@ mod tests {
     
     #[test]
     fn insert() {
-        let mut t = btree_order_3(); // A B-Tree with minimum order 3
+        let mut t = btree_order!(3);
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n);
         }
@@ -287,7 +378,7 @@ mod tests {
     }
     #[test] 
     fn remove() {
-        let mut t = btree_order_3();
+        let mut t = btree_order!(3);
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n);
         }
@@ -303,7 +394,7 @@ mod tests {
     
     #[test]
     fn search() {
-        let mut t = btree_order_3();
+        let mut t = btree_order!(3);
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n);
         }
