@@ -259,7 +259,7 @@ mod tests {
     macro_rules! cmp {
         ($a:expr, $b:expr, $f:literal $(, $g:literal)*) => {
             assert_eq!($a.len(), $b.len(), "{} Lengths were wrong.", 
-                       $f $(, $g)*);
+                       format!($f $(, $g)*));
             $a.iter().zip($b).for_each(|t| assert_eq!(t.0, t.1, $f $(, $g)*));
         }
     }
