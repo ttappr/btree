@@ -15,7 +15,7 @@ Because the tree uses a combination of tree traversal and binary search to
 locate its nodes and keys, the order can be considerably large without 
 sacrificing performance. Traversal is used to locate the nodes while binary 
 search is performed on the internal arrays of the nodes to locate key positions. 
-Insertions and deletions will however degrade very slightly as the order 
+Insertions and deletions will however degrade gradually as the order 
 increases, but this may be negligible due to data locality and caching.
 
 The tree's order can be fine tuned to find the sweet spot for performance.
