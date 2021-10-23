@@ -12,6 +12,19 @@ use Node::*;
 
 /// Creates a new `BTree` of the order specified by `$order`. If `$order` isn't
 /// specified, a tree of default order 16 is created.
+/// ```
+/// use btree::*;
+/// 
+/// let mut bt = btree_order!(3);
+/// 
+/// bt.insert(3);
+/// bt.insert(7);
+/// bt.insert(0);
+/// 
+/// for n in [0, 3, 7] {
+///     assert_eq!(bt.search(&n), Some(&n));
+/// }
+/// ```
 /// 
 #[macro_export]
 macro_rules! btree_order {
