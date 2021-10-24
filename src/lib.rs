@@ -1,4 +1,3 @@
-
 //! This crate provides the `BTree` class, which allows its order to be 
 //! specified on creation. The *order* is defined as the minimum number of keys 
 //! a node can hold. A node can possess up to `2 * order` keys, and 

@@ -1,5 +1,5 @@
-
 use std::marker::Sized;
+
 
 /// Trait to add methods to `Result` similar to `.map()` and `.map_or_else()`, 
 /// but don't return a value.

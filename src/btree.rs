@@ -1,11 +1,7 @@
-
-#![allow(unused)]
-
 use std::fmt::Debug;
 use std::mem::{replace, take};
 
 use crate::arr::*;
-use crate::if_good::*;
 
 use Node::*;
 
@@ -16,28 +12,22 @@ use Node::*;
 /// use btree::*;
 /// 
 /// let mut bt = btree_order!(3);
+/// let     d  = [(3, 'c'), (7, 'g'), (24, 'x')];
 /// 
-/// bt.insert(3);
-/// bt.insert(7);
-/// bt.insert(0);
-/// 
-/// for n in [0, 3, 7] {
-///     assert_eq!(bt.search(&n), Some(&n));
+/// for (k, v) in d {
+///     bt.insert(k, v);
+/// }
+/// for (k, v) in d {
+///     assert_eq!(bt.get(&k), Some(&v));
 /// }
 /// ```
 /// 
 #[macro_export]
 macro_rules! btree_order {
     ($order:expr) => {{
-        if $order > 128 { 
-            panic!("The selected order of the tree is too large ({}). `BTree` 
-                   supports orders up to 128.", $order); 
-        }
-        BTree::<_, {$order * 2}, {$order * 2 + 1}>::new()
-    }};
-    () => {
-        BTree::<_, 32, 33>::new()
-    }
+        assert!($order <= 128, "`BTree` order must be <= 128.");
+        BTree::<_, _, {$order * 2}, {$order * 2 + 1}>::new()
+    }}
 }
 
 /// The main class for the tree. Holds the root node. The *order* of the tree is
@@ -51,18 +41,20 @@ macro_rules! btree_order {
 /// 
 /// # Generic Parameters
 /// * `K`   - The key type.
+/// * `V`   - The value type.
 /// * `M`   - The maximum number of keys of a node (must be `order * 2`).
 /// * `N`   - The maximum number of children of any node 
 ///           (must be `order * 2 + 1`).
 /// 
 #[derive(Debug)]
-pub struct BTree<K, const M: usize, const N: usize> {
-    root  : Node<K, M, N>,
+pub struct BTree<K, V, const M: usize, const N: usize> {
+    root  : Node<K, V, M, N>,
 }
 
-impl<K, const M: usize, const N: usize> BTree<K, M, N> 
+impl<K, V, const M: usize, const N: usize> BTree<K, V, M, N> 
 where
-    K: Debug + Default + Ord,
+    K: Default + Ord,
+    V: Default,
 {
     /// Returns a new `BTree` with a `Seed` as root.
     /// 
@@ -70,60 +62,57 @@ where
         Self { root: Seed }
     }
 
-    /// A temporary method to traverse the tree and print out the nodes. To
-    /// be removed at some point.
-    /// TODO - When removing this, also remove the `Debug` constraint on `K`.
+    /// Returns a reference to the value associated with the given key. If the
+    /// key wasn't present in the tree, `None` is returned instead;
     /// 
-    fn traverse(&self) {
-        self.root.traverse();
+    pub fn get(&self, key: &K) -> Option<&V> {
+        self.root.get(key)
     }
 
-    /// Locates the key that matches `k` and returns a reference to it if it
-    /// exists within the tree; `None` is returned otherwise.
+    /// Inserts the given key and value in the tree, or updates the associated 
+    /// value if the key was already present.
     /// 
-    pub fn search(&self, k: &K) -> Option<&K> {
-        self.root.search(k)
-    }
-
-    /// Inserts the given key in the tree, or updates the matching key if 
-    /// already present.
-    /// 
-    pub fn insert(&mut self, k: K) {
+    pub fn insert(&mut self, key: K, val: V) {
+        // TODO - If the key is already present, should we split the node 
+        //        anyway to avoid the wasted work of probing for the key?
         if self.root.full() {
             let mut ch1   = self.root.take();
             let mut ch2   = ch1.split();
             let mut keys  = Arr::new();
+            let mut vals  = Arr::new();
             let mut child = Arr::new();
-            let     key   = ch1.pop_key().unwrap();
+            let (k, v)    = ch1.pop();
             
-            if k < key { ch1.insert(k); } 
-            else       { ch2.insert(k); }
+            if key < k { ch1.insert(key, val); } 
+            else       { ch2.insert(key, val); }
             
-            keys.push(key);
+            keys.push(k);
+            vals.push(v);
             child.push(ch1);
             child.push(ch2);
             
-            self.root = Branch { keys, child };
+            self.root = Branch { keys, vals, child };
         } else {
-            self.root.insert(k);
+            self.root.insert(key, val);
         }
     }
 
-    /// Removes the key matching `k` from the tree and returns it if it exits;
-    /// otherwise `None` is returned.
+    /// Removes the matching key from the tree and returns its associated
+    /// value. If the key wasn't present, `None` is returned.
     /// 
-    pub fn remove(&mut self, k: &K) -> Option<K> {
-        let key = self.root.remove(k);
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let val = self.root.remove(key);
         if self.root.n_keys() == 0 {
             self.root = Seed;
         }
-        key
-    }
+        val
+    }    
 }
 
-impl<K, const M: usize, const N: usize> Default for BTree<K, M, N> 
+impl<K, V, const M: usize, const N: usize> Default for BTree<K, V, M, N> 
 where
-    K: Debug + Default + Ord,
+    K: Default + Ord,
+    V: Default,    
 {
     /// Returns a new empty BTree.
     /// 
@@ -143,48 +132,40 @@ where
 /// 
 /// # Generic Parameters
 /// * `K`   - The key type.
+/// * `V`   - The value type.
 /// * `M`   - The maximum number of keys (must be `order * 2`).
 /// * `N`   - The maximum number of children (must be `order * 2 + 1`).
 /// 
 #[derive(Debug)]
-pub enum Node<K, const M: usize, const N: usize> {
+pub enum Node<K, V, const M: usize, const N: usize> {
     Seed,
-    Branch { keys: Arr<K, M>, child: Arr<Node<K, M, N>, N> },
-    Leaf   { keys: Arr<K, M>                               },
+    Branch{ keys: Arr<K, M>, vals: Arr<V, M>, child: Arr<Node<K, V, M, N>, N> },
+    Leaf  { keys: Arr<K, M>, vals: Arr<V, M>                                  },
 }
 
-impl<K, const M: usize, const N: usize> Node<K, M, N> 
+impl<K, V, const M: usize, const N: usize> Node<K, V, M, N> 
 where
-    K: Debug + Default + Ord,
+    K: Default + Ord,
+    V: Default,
 {
     /// Returns the number of keys in the node.
     /// 
     fn n_keys(&self) -> usize {
         match self {
-            Branch { keys, child } => keys.len(),
-            Leaf   { keys        } => keys.len(),
-            Seed                   => 0,
+            Branch { keys, .. } => keys.len(),
+            Leaf   { keys, .. } => keys.len(),
+            Seed                => 0,
         }
     }
 
-    /// Pops and returns the last key of the node if any keys are present.
+    /// Pops the last key and value from the current node. Panics if the
+    /// node is empty.
     /// 
-    fn pop_key(&mut self) -> Option<K> {
+    fn pop(&mut self) -> (K, V) {
         match self {
-            Branch { keys, child } => keys.pop(),
-            Leaf   { keys        } => keys.pop(),
-            Seed                   => None,
-        }
-    }
-
-    /// Removes the element at index 0 and returns it if it exists; `None` is
-    /// returned otherwise.
-    /// 
-    fn pop_front_key(&mut self) -> Option<K> {
-        match self {
-            Branch { keys, child } => keys.pop_front(),
-            Leaf   { keys        } => keys.pop_front(),
-            Seed                   => None,
+            Branch { keys, vals, .. } => (keys.raw_pop(), vals.raw_pop()),
+            Leaf   { keys, vals     } => (keys.raw_pop(), vals.raw_pop()),
+            Seed                      => panic!("Popping from a `Seed`."),
         }
     }
 
@@ -192,9 +173,9 @@ where
     /// 
     fn full(&self) -> bool {
         match self {
-            Branch { keys, child } => keys.full(),
-            Leaf   { keys        } => keys.full(),
-            Seed                   => false,
+            Branch { keys, .. } => keys.full(),
+            Leaf   { keys, .. } => keys.full(),
+            Seed                => false,
         }
     }
 
@@ -204,40 +185,18 @@ where
         take(self)
     }
 
-    /// For debugging during development. Prints out the tree.
+    /// Returns a reference to the value associated with the given key. If the
+    /// key isn't present in the tree, `None` is returned instead.
     /// 
-    fn traverse(&self) {
+    fn get(&self, key: &K) -> Option<&V> {
         match self {
-            Branch { keys, child } => {
-                keys.into_iter().zip(child)
-                    .for_each(|(k, c)| { 
-                        c.traverse(); 
-                        println!("{:?}", k);
-                    });
-                child.last().if_some(Self::traverse);
+            Branch { keys, vals, child } => {
+                keys.binary_search(key)
+                    .map_or_else(|i| child[i].get(key),
+                                 |i| Some(&vals[i]))
             },
-            Leaf { keys } => {
-                keys.into_iter().for_each(|k| println!("{:?}", k));
-            }
-            seed => { },
-        }
-    }
-
-    /// Returns a reference to the key matching `k` if it exists in the tree;
-    /// otherwise `None` is returned. Uses a combination of tree traversal,
-    /// to navigate to the right node, then binary search to locate the key
-    /// within the node's internal array. This enables the 'order' of the tree
-    /// to be considerably large without sacrificing performance.
-    /// 
-    fn search(&self, k: &K) -> Option<&K> {
-        match self {
-            Branch { keys, child } => {
-                keys.binary_search(k)
-                    .map_or_else(|i| child[i].search(k),
-                                 |i| Some(&keys[i]))
-            },
-            Leaf { keys } => {
-                keys.binary_search(k).map(|i| &keys[i]).ok()
+            Leaf { keys, vals } => {
+                keys.binary_search(key).map(|i| &vals[i]).ok()
             },
             Seed => None,
         }
@@ -246,85 +205,98 @@ where
     /// Inserts the given key into the tree, or updates the existing matching
     /// key.
     /// 
-    fn insert(&mut self, k: K) {
+    fn insert(&mut self, k: K, v: V) {
         match self {
-            Branch { keys, child } => {
+            Branch { keys, vals, child } => {
                 match keys.binary_search(&k) {
                     Err(i) => {
                         if child[i].full() {
-                            let ch = child[i].split();
+                            let (k, v) = child[i].pop();
+                            let ch     = child[i].split();
+
                             child.insert(i + 1, ch);
-                            child[i].pop_key().if_some(|k| keys.insert(i, k));
+                            keys.insert(i, k);
+                            vals.insert(i, v);
                         }
-                        child[i].insert(k);
+                        child[i].insert(k, v);
                     }, 
                     Ok(i) => { keys[i] = k; }
                 }
             },
-            Leaf { keys } => {
+            Leaf { keys, vals } => {
                 match keys.binary_search(&k) {
-                    Err(i) => { keys.insert(i, k); },
-                    Ok(i)  => { keys[i] = k;       },
+                    Err(i) => { keys.insert(i, k); vals.insert(i, v); },
+                    Ok(i)  => { keys[i] = k;       vals[i] = v;       },
                 }
             },
             Seed => { 
                 let mut keys = Arr::new();
+                let mut vals = Arr::new();
                 keys.push(k);
-                *self = Leaf { keys };
+                vals.push(v);
+                *self = Leaf { keys, vals };
             },
         }
     }
 
     /// Splits a node in half, returning a new node containing the larger keys.
     /// 
-    fn split(&mut self) -> Node<K, M, N> {
+    fn split(&mut self) -> Node<K, V, M, N> {
         match self {
-            Branch { keys, child } => {
-                let mut k2 = keys.split();
-                let mut c2 = child.split();
-                Branch { keys: k2, child: c2 }
+            Branch { keys, vals, child } => {
+                let k2 = keys.split();
+                let v2 = vals.split();
+                let c2 = child.split();
+                Branch { keys: k2, vals: v2, child: c2 }
             },
-            Leaf { keys } => {
-                let mut k2 = keys.split();
-                Leaf { keys: k2 }
+            Leaf { keys, vals } => {
+                let k2 = keys.split();
+                let v2 = vals.split();
+                Leaf { keys: k2, vals: v2 }
             },
             Seed => panic!("Can't split a Seed."),
         }
     }
 
-    /// Removes the key that matches `k` from the tree and returns it if it
-    /// exists; otherwise `None` is returned. The tree automatically rebalances.
+    /// Removes the matching key and its associated value from the tree. The
+    /// value is returned; or if the key wasn't present, `None` is returned.
     /// 
-    fn remove(&mut self, k: &K) -> Option<K> {
+    fn remove(&mut self, key: &K) -> Option<V> {
         match self {
-            Branch { keys, child } => {
-                match keys.binary_search(k) {
+            Branch { keys, vals, child } => {
+                match keys.binary_search(key) {
                     Ok(i) => {
                         if child[i].n_keys() >= M / 2 {
-                            let pred = child[i].max_key();
-                            Some(replace(&mut keys[i], pred))
+                            let (k, v) = child[i].max_key_val();
+                            keys[i] = k;
+                            Some(replace(&mut vals[i], v))
                         } 
                         else if child[i + 1].n_keys() >= M / 2 {
-                            let succ = child[i + 1].min_key();
-                            Some(replace(&mut keys[i], succ))
+                            let (k, v) = child[i + 1].min_key_val();
+                            keys[i] = k;
+                            Some(replace(&mut vals[i], v))
                         } 
                         else {
                             let c = child.remove(i + 1);
-                            let k = keys.remove(i);
+                            let _ = keys.remove(i);
+                            let v = vals.remove(i);
                             child[i].merge(c);
                             if keys.len() == 0 {
                                 *self = child.remove(i);
                             }
-                            Some(k)
+                            Some(v)
                         }
                     },
                     Err(i) => {
-                        child[i].remove(k)
+                        child[i].remove(key)
                     },
                 }
             },
-            Leaf { keys } => {
-                keys.binary_search(k).map(|i| keys.remove(i)).ok()
+            Leaf { keys, vals } => {
+                keys.binary_search(key).map(|i| { 
+                    keys.remove(i); 
+                    vals.remove(i) 
+                }).ok()
             },
             Seed => None,
         }
@@ -333,57 +305,71 @@ where
     /// Combines the current node with `other`. The nodes must be of the same
     /// variant.
     /// 
-    fn merge(&mut self, mut other: Node<K, M, N>) {
+    fn merge(&mut self, other: Node<K, V, M, N>) {
         match (self, other) {
-            (Branch { keys: k1, child: c1 }, 
-             Branch { keys: k2, child: c2 }) => {
+            (Branch { keys: k1, vals: v1, child: c1 }, 
+             Branch { keys: k2, vals: v2, child: c2 }) => {
                 k1.merge(k2);
+                v1.merge(v2);
                 c1.merge(c2);
              },
-             (Leaf { keys: k1 }, Leaf { keys: k2 }) => {
+             (Leaf { keys: k1, vals: v1 }, 
+              Leaf { keys: k2, vals: v2 }) => {
                 k1.merge(k2);
+                v1.merge(v2);
              },
             _ => panic!("Invalid operands for Node::merge()."),
         }
     }
 
     /// Descends the tree from the current node to find it's maximum key.
-    /// This key is removed from its hosting node and returned.
+    /// This key and its value are removed from their hosting node and returned.
     /// 
-    fn max_key(&mut self) -> K {
+    fn max_key_val(&mut self) -> (K, V) {
         let mut curr = self; 
         let mut key  = None;
+        let mut val  = None;
         loop {
             match curr {
-                Branch { keys, child } => {
+                Branch { keys: _, vals: _, child } => {
                     curr = child.last_mut().unwrap();
                 },
-                Leaf { keys } => { key = keys.pop(); break; },
+                Leaf { keys, vals } => { 
+                    key = keys.pop(); 
+                    val = vals.pop(); 
+                    break; 
+                },
                 Seed => { break; }
             }
         }
-        key.unwrap()
+        (key.unwrap(), val.unwrap())
     }
 
+
     /// Descends the tree from the current node to find that branch's minimum
-    /// key. The key is removed from the tree and returned.
+    /// key and its associated value. The key and value are removed from the 
+    /// tree and returned.
     /// 
-    fn min_key(&mut self) -> K {
-        let mut curr = self;
-        let mut key  = None;
+    fn min_key_val(&mut self) -> (K, V) {
+        let mut curr    = self;
+        let mut key_val = None;
         loop {
             match curr {
-                Branch { keys, child } => {
+                Branch { keys: _, vals: _, child } => {
                     curr = &mut child[0];
                 },
-                Leaf { keys } => { key = keys.pop_front(); break; },
+                Leaf { keys, vals } => { 
+                    key_val = Some((keys.raw_pop_front(), 
+                                    vals.raw_pop_front()));
+                    break; 
+                },
                 Seed => { break; }
             }
         }
-        key.unwrap()
+        key_val.unwrap()
     }
 }
-impl<K, const M: usize, const N: usize> Default for Node<K, M, N> {
+impl<K, V, const M: usize, const N: usize> Default for Node<K, V, M, N> {
 
     /// Returns the default value for `Node`, which is the variant `Seed`.
     /// 
@@ -401,16 +387,15 @@ mod tests {
     fn insert() {
         let mut t = btree_order!(3);
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
-            t.insert(n);
+            t.insert(n, n);
         }
-        t.traverse();
         println!("{:#?}", t);
     }
     #[test] 
     fn remove() {
         let mut t = btree_order!(3);
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
-            t.insert(n);
+            t.insert(n, n);
         }
         /* t.remove(&6);
            t.remove(&7);
@@ -425,14 +410,15 @@ mod tests {
     #[test]
     fn search() {
         let mut t = btree_order!(3);
+        
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
-            t.insert(n);
+            t.insert(n, n);
         }
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
-            assert_eq!(t.search(&n), Some(&n));
+            assert_eq!(t.get(&n), Some(&n));
         }
         for n in [18, 2, 9, 42, 100] {
-            assert_eq!(t.search(&n), None);
+            assert_eq!(t.get(&n), None);
         }
     }
 }

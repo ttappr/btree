@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use std::fmt;
 use std::mem::take;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
@@ -49,6 +47,7 @@ where
 
     /// Returns `Some(&mut T)` if the index is valid; `None` otherwise.
     /// 
+    #[allow(unused)]
     pub(crate) fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
         if idx < self.len() { Some(&mut self.arr.0[idx]) } 
         else                { None                       }
@@ -107,14 +106,32 @@ where
         }
     }
 
+    pub(crate) fn raw_pop(&mut self) -> T {
+        if self.arr.1 > 0 {
+            self.arr.1 -= 1;
+            self.take(self.len())
+        } else {
+            panic!("Popping from an empty array.");
+        }
+    }
+
     /// Removes and returns the first element in the array if there are elements
     /// in the array; `None` otherwise.
     /// 
+    #[allow(unused)]
     pub(crate) fn pop_front(&mut self) -> Option<T> {
         if self.arr.1 > 0 {
             Some(self.remove(0))
         } else {
             None
+        }
+    }
+
+    pub(crate) fn raw_pop_front(&mut self) -> T {
+        if self.arr.1 > 0 {
+            self.remove(0)
+        } else {
+            panic!("Popping from an empty array.")
         }
     }
 
@@ -144,7 +161,7 @@ where
                 "Attempt to remove item at {} from array of length {}.", 
                 idx, self.len());
         let ret = self.take(idx);
-        for i in (idx..self.len() - 1) {
+        for i in idx..self.len() - 1 {
             self.arr.0[i] = self.take(i + 1);
         }
         self.arr.1 -= 1;
@@ -331,7 +348,7 @@ mod tests {
         {
             let mut a = Arr::<_, 10>::new();
             let mut b = Arr::<_, 10>::new();
-            let mut v = (0..5).chain(0..5).collect::<Vec<_>>();
+            let     v = (0..5).chain(0..5).collect::<Vec<_>>();
             for n in 0..5 {
                 a.push(n);
                 b.push(n);
@@ -345,7 +362,7 @@ mod tests {
         {
             let mut a = Arr::<_, 10>::new();
             let mut b = Arr::<_, 10>::new();
-            let mut v = r1.clone().chain(r2.clone()).collect::<Vec<_>>();
+            let     v = r1.clone().chain(r2.clone()).collect::<Vec<_>>();
             r1.for_each(|n| a.push(n));
             r2.for_each(|n| b.push(n));
             a.merge(b);
