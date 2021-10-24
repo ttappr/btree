@@ -24,15 +24,15 @@ is fully implemented.
 ## Example Code
 
 ```rust
-    let mut bt = btree_order!(128);
+    let mut bt = btree_order!(3);
 
-    let     keys = [10, 20, 5, 6, 12, 30, 7, 17];
-    let     vals = ['j', 't', 'e', 'f', 'l', '~', 'g', 'q'];
+    let kv = [(10, 'j'), (20, 't'), (5, 'e'), (6,  'f'), 
+              (12, 'l'), (30, '~'), (7, 'g'), (17, 'q')];
 
-    for (k, v) in keys.into_iter().zip(vals) {
+    for (k, v) in kv {
         bt.insert(k, v);
     }
-    for (k, v) in keys.into_iter().zip(vals) {
+    for (k, v) in kv {
         assert_eq!(bt.get(&k), Some(&v));
     }
     for n in [18, 2, 9, 42, 100] {

@@ -421,4 +421,22 @@ mod tests {
             assert_eq!(t.get(&n), None);
         }
     }
+
+    #[test]
+    fn example() {
+        let mut bt = btree_order!(3);
+
+        let kv = [(10, 'j'), (20, 't'), (5, 'e'), (6,  'f'), 
+                  (12, 'l'), (30, '~'), (7, 'g'), (17, 'q')];
+    
+        for (k, v) in kv {
+            bt.insert(k, v);
+        }
+        for (k, v) in kv {
+            assert_eq!(bt.get(&k), Some(&v));
+        }
+        for n in [18, 2, 9, 42, 100] {
+            assert_eq!(bt.get(&n), None);
+        }        
+    }
 }
