@@ -97,6 +97,7 @@ where
     /// Removes and returns the last element in the array as `Some(T). If the 
     /// array was empty `None` is returned.
     /// 
+    #[allow(unused)]
     pub(crate) fn pop(&mut self) -> Option<T> {
         if self.arr.1 > 0 {
             self.arr.1 -= 1;

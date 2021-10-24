@@ -396,7 +396,7 @@ mod tests {
     
     #[test]
     fn insert() {
-        let mut t = btree_order!(3);
+        let mut t = BTree3::new();
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n, n);
         }
@@ -404,7 +404,7 @@ mod tests {
     }
     #[test] 
     fn remove() {
-        let mut t = btree_order!(3);
+        let mut t = BTree3::new();
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n, n);
         }
@@ -420,7 +420,7 @@ mod tests {
     
     #[test]
     fn search() {
-        let mut t = btree_order!(3);
+        let mut t = BTree3::new();
         
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
             t.insert(n, n);
@@ -435,19 +435,23 @@ mod tests {
 
     #[test]
     fn example() {
-        let mut bt = BTree6::new();
+        let mut bt6 = BTree6::new();    // Order 6 BTree.
+        let mut bt8 = btree_order!(8);  // Order 8 - arbitrary order via macro.
 
         let kv = [(10, 'j'), (20, 't'), (5, 'e'), (6,  'f'), 
                   (12, 'l'), (30, '~'), (7, 'g'), (17, 'q')];
     
         for (k, v) in kv {
-            bt.insert(k, v);
+            bt6.insert(k, v);
+            bt8.insert(k, v);
         }
         for (k, v) in kv {
-            assert_eq!(bt.get(&k), Some(&v));
+            assert_eq!(bt6.get(&k), Some(&v));
+            assert_eq!(bt8.get(&k), Some(&v));
         }
         for n in [18, 2, 9, 42, 100] {
-            assert_eq!(bt.get(&n), None);
+            assert_eq!(bt6.get(&n), None);
+            assert_eq!(bt8.get(&n), None);
         }        
     }
 }
