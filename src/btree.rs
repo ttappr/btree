@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn example() {
-        let mut bt = BTree3::new();
+        let mut bt = BTree6::new();
 
         let kv = [(10, 'j'), (20, 't'), (5, 'e'), (6,  'f'), 
                   (12, 'l'), (30, '~'), (7, 'g'), (17, 'q')];
