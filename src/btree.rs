@@ -6,6 +6,19 @@ use crate::arr::*;
 use Node::*;
 
 
+/// Aliases to help the compiler with type inference when declaring instances of
+/// the tree.
+/// ```
+/// use btree::BTree6;
+/// 
+/// let mut bt = BTree6::new(); // Order 6 tree.
+/// bt.insert("foo", "bar");
+/// ```
+/// 
+pub type BTree3<K, V> = BTree<K, V, 6, 7>;
+pub type BTree6<K, V> = BTree<K, V, 12, 13>;
+
+
 /// Creates a new `BTree` of the order specified by `$order`. If `$order` isn't
 /// specified, a tree of default order 16 is created.
 /// ```
@@ -267,12 +280,12 @@ where
                 match keys.binary_search(key) {
                     Ok(i) => {
                         if child[i].n_keys() >= M / 2 {
-                            let (k, v) = child[i].max_key_val();
+                            let (k, v) = child[i].max_descendant();
                             keys[i] = k;
                             Some(replace(&mut vals[i], v))
                         } 
                         else if child[i + 1].n_keys() >= M / 2 {
-                            let (k, v) = child[i + 1].min_key_val();
+                            let (k, v) = child[i + 1].min_descendant();
                             keys[i] = k;
                             Some(replace(&mut vals[i], v))
                         } 
@@ -325,24 +338,22 @@ where
     /// Descends the tree from the current node to find it's maximum key.
     /// This key and its value are removed from their hosting node and returned.
     /// 
-    fn max_key_val(&mut self) -> (K, V) {
-        let mut curr = self; 
-        let mut key  = None;
-        let mut val  = None;
+    fn max_descendant(&mut self) -> (K, V) {
+        let mut curr    = self; 
+        let mut key_val = None;
         loop {
             match curr {
                 Branch { keys: _, vals: _, child } => {
                     curr = child.last_mut().unwrap();
                 },
                 Leaf { keys, vals } => { 
-                    key = keys.pop(); 
-                    val = vals.pop(); 
+                    key_val = Some((keys.raw_pop(), vals.raw_pop()));
                     break; 
                 },
                 Seed => { break; }
             }
         }
-        (key.unwrap(), val.unwrap())
+        key_val.unwrap()
     }
 
 
@@ -350,7 +361,7 @@ where
     /// key and its associated value. The key and value are removed from the 
     /// tree and returned.
     /// 
-    fn min_key_val(&mut self) -> (K, V) {
+    fn min_descendant(&mut self) -> (K, V) {
         let mut curr    = self;
         let mut key_val = None;
         loop {
@@ -424,7 +435,7 @@ mod tests {
 
     #[test]
     fn example() {
-        let mut bt = btree_order!(3);
+        let mut bt = BTree3::new();
 
         let kv = [(10, 'j'), (20, 't'), (5, 'e'), (6,  'f'), 
                   (12, 'l'), (30, '~'), (7, 'g'), (17, 'q')];

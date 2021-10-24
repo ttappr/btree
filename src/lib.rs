@@ -14,4 +14,4 @@ mod btree;
 mod if_good;
 mod arr;
 
-pub use crate::btree::BTree;
+pub use crate::btree::{BTree, BTree3, BTree6};
