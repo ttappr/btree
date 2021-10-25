@@ -24,6 +24,20 @@ where
         Self { arr: Box::new((array![_ => T::default(); S], 0)) }
     }
 
+    pub(crate) fn from_item(item: T) -> Self {
+        let mut arr = Arr::new();
+        arr.push(item);
+        arr
+    }
+
+    pub(crate) fn from_items(items: &mut [T]) -> Self {
+        let mut arr = Arr::new();
+        for i in 0..items.len() {
+            arr.push(take(&mut items[i]));
+        }
+        arr
+    }
+
     /// Gives the number of active elements in the array.
     /// 
     pub(crate) fn len(&self) -> usize {
@@ -34,6 +48,14 @@ where
     /// 
     pub(crate) fn full(&self) -> bool {
         self.arr.1 == S as u8
+    }
+
+    pub(crate) fn last(&self) -> &T {
+        &self.arr.0[self.len() - 1]
+    }
+
+    pub(crate) fn first(&self) -> &T {
+        &self.arr.0[0]
     }
 
     /// Returns the element at the given index if one is present, or `None`
@@ -66,10 +88,18 @@ where
     /// 
     pub(crate) fn split(&mut self) -> Arr<T, S> {
         let mid = self.len() / 2;
-        let len = self.len() - mid;
-        let arr = array![i => if i < len { self.take(mid + i) } 
+        self.split_at(mid)
+    }
+
+    /// Splits the `Arr` at `idx` returns a new `Arr` containing the elements
+    /// taken from the original starting at index `idx`. The elements
+    /// included in the new `Arr` are removed from the original.
+    /// 
+    pub(crate) fn split_at(&mut self, idx: usize) -> Arr<T, S> {
+        let len = self.len() - idx;
+        let arr = array![i => if i < len { self.take(idx + i) }
                               else       { T::default()       }; S];
-        self.arr.1 = mid as u8;
+        self.arr.1 = idx as u8;
         Self { arr: Box::new((arr, len as u8)) }
     }
 
@@ -169,10 +199,7 @@ where
         ret
     }
 }
-impl<T, const S: usize> Index<usize> for Arr<T, S> 
-where
-    T: Default,
-{    
+impl<T, const S: usize> Index<usize> for Arr<T, S> {    
     type Output = T;
 
     /// Gives `Arr` array indexing features.
@@ -182,10 +209,7 @@ where
         &self.arr.0[idx]
     }
 }
-impl<T, const S: usize> IndexMut<usize> for Arr<T, S> 
-where
-    T: Default,
-{
+impl<T, const S: usize> IndexMut<usize> for Arr<T, S> {
     /// Gives `Arr` mutable array indexing.
     /// 
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
@@ -198,10 +222,7 @@ where
 /// 
 pub struct ArrIter<'a, T, const S: usize>(&'a Arr<T, S>, usize);
 
-impl<'a, T, const S: usize> Iterator for ArrIter<'a, T, S> 
-where
-    T: Default,
-{
+impl<'a, T, const S: usize> Iterator for ArrIter<'a, T, S> {
     type Item = &'a T;
 
     /// Returns the next item in `Arr` as a reference.
@@ -213,10 +234,7 @@ where
     }
 }
 
-impl<'a, T, const S: usize> IntoIterator for &'a Arr<T, S> 
-where
-    T: Default,
-{
+impl<'a, T, const S: usize> IntoIterator for &'a Arr<T, S> {
     type Item     = &'a T;
     type IntoIter = ArrIter<'a, T, S>;
 
@@ -261,6 +279,19 @@ where
         f.debug_list().entries(self.arr.0[0..self.len()].iter()).finish()
     }
 }
+
+impl<T, const S: usize> fmt::Display for Arr<T, S> 
+where
+    T: fmt::Debug 
+{
+    /// Customizes debug print output making `Arr` appear as a simple array
+    /// directly containing the elements of the internal array.
+    /// 
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.deref())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

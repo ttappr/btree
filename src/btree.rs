@@ -1,8 +1,11 @@
-use std::fmt::Debug;
+use std::fmt;
 use std::mem::{replace, take};
+use std::cmp::Ordering;
 
 use crate::arr::*;
+use crate::if_good::*;
 
+use Ordering::*;
 use Node::*;
 
 
@@ -15,8 +18,9 @@ use Node::*;
 /// bt.insert("foo", "bar");
 /// ```
 /// 
-pub type BTree3<K, V> = BTree<K, V, 6, 7>;
+pub type BTree3<K, V> = BTree<K, V,  6,  7>;
 pub type BTree6<K, V> = BTree<K, V, 12, 13>;
+pub type BTree9<K, V> = BTree<K, V, 18, 19>;
 
 
 /// Creates a new `BTree` of the order specified by `$order`. If `$order` isn't
@@ -86,25 +90,19 @@ where
     /// value if the key was already present.
     /// 
     pub fn insert(&mut self, key: K, val: V) {
-        // TODO - If the key is already present, should we split the node 
-        //        anyway to avoid the wasted work of probing for the key?
         if self.root.full() {
-            let mut ch1   = self.root.take();
-            let mut ch2   = ch1.split();
-            let mut keys  = Arr::new();
-            let mut vals  = Arr::new();
-            let mut child = Arr::new();
-            let (k, v)    = ch1.pop();
-            
-            if key < k { ch1.insert(key, val); } 
-            else       { ch2.insert(key, val); }
-            
-            keys.push(k);
-            vals.push(v);
-            child.push(ch1);
-            child.push(ch2);
-            
-            self.root = Branch { keys, vals, child };
+            match self.root.search(&key) {
+                Ok(i) => { },
+                Err(i) => { },
+            }
+            let mut ch1 = self.root.take();
+            let mut ch2 = ch1.split();
+            let (k, v)  = ch2.pop_front();
+            self.root = Branch { 
+                keys  : Arr::from_item(k), 
+                vals  : Arr::from_item(v), 
+                child : Arr::from_items(&mut [ch1, ch2]),
+            }
         } else {
             self.root.insert(key, val);
         }
@@ -134,6 +132,30 @@ where
     }
 }
 
+#[allow(unused)]
+macro_rules! decomp {
+    ($node:expr, $keys:ident, $vals:ident, $child:ident, $code:block) => {{
+        match $node {
+            Branch { keys: $keys, vals: $vals, child } => {
+                let $child = Some(child);
+                $code
+            },
+            Leaf { keys: $keys, vals: $vals } => {
+                let $child = Option::<Arr<Self, N>>::None;
+                $code
+            },
+            Seed => {
+                let mut $keys  = Arr::new();
+                let mut $vals  = Arr::new();
+                let     $child = Option::<Arr<Self, N>>::None;
+                let     ret    = $code;
+                        *$node = Leaf { $keys, $vals };
+                ret
+            },
+        }   
+    }}
+}
+
 
 /// The node type of the tree. The bulk of the tree's functionality is coded
 /// within this class.
@@ -149,7 +171,6 @@ where
 /// * `M`   - The maximum number of keys (must be `order * 2`).
 /// * `N`   - The maximum number of children (must be `order * 2 + 1`).
 /// 
-#[derive(Debug)]
 pub enum Node<K, V, const M: usize, const N: usize> {
     Seed,
     Branch{ keys: Arr<K, M>, vals: Arr<V, M>, child: Arr<Node<K, V, M, N>, N> },
@@ -181,6 +202,35 @@ where
             Seed                      => panic!("Popping from a `Seed`."),
         }
     }
+
+    /// Pops the last key and value from the current node. Panics if the
+    /// node is empty.
+    /// 
+    fn pop_front(&mut self) -> (K, V) {
+        match self {
+            Branch { keys, vals, .. } => (keys.raw_pop_front(), 
+                                          vals.raw_pop_front()),
+            Leaf   { keys, vals     } => (keys.raw_pop_front(), 
+                                          vals.raw_pop_front()),
+            Seed                      => panic!("Popping from a `Seed`."),
+        }
+    }
+
+    fn last_key(&mut self) -> &K {
+        match self {
+            Branch { keys, .. } => keys.last(),
+            Leaf   { keys, .. } => keys.last(),
+            Seed                => panic!("`Seed` has no keys."),
+        }
+    }
+
+    fn first_key(&mut self) -> &K {
+        match self {
+            Branch { keys, .. } => keys.first(),
+            Leaf   { keys, .. } => keys.first(),
+            Seed                => panic!("`Seed` has no keys."),
+        }
+    }    
 
     /// Reports whether the node has reached the maximum key population.
     /// 
@@ -233,7 +283,7 @@ where
                         }
                         child[i].insert(k, v);
                     }, 
-                    Ok(i) => { keys[i] = k; }
+                    Ok(i) => { keys[i] = k; vals[i] = v; }
                 }
             },
             Leaf { keys, vals } => {
@@ -248,6 +298,118 @@ where
                 keys.push(k);
                 vals.push(v);
                 *self = Leaf { keys, vals };
+            },
+        }
+    }
+
+    /// Inserts the given key and value into the tree, or updates an existing
+    /// key's value. If the node this is invoked on was full and had to be split
+    /// to accommodate a new entry, the new right child node split off will be 
+    /// returned as `Some(right_child)`; otherwise `None` is returned.
+    /// 
+    fn insert2(&mut self, key: K, val: V) -> Option<(K, V, Self)> {
+        let mut ret = None;
+        let r = decomp!( self, keys, vals, child, {
+            match keys.binary_search(&key) {
+                Ok(i) => { None },
+                Err(i) => { 
+                    if let Some(mut child) = child {
+                        child[i].insert2(key, val).map(|(k, v, ch)| {
+                            if keys.full() {
+                                let mut k2 = keys.split();
+                                let mut v2 = vals.split();
+                                let mut c2 = child.split();
+                                let (k, v) = if i < M / 2 {
+                                    keys.insert(i, k);
+                                    vals.insert(i, v);
+                                    child.insert(i + 1, ch);
+                                    (K::default(), V::default())
+                                } else {
+                                    (K::default(), V::default())
+                                };
+                                Some((k, v))
+                            } else { None }
+                        })
+                    } else { None }
+                },
+            }
+        });
+/*
+        match self {
+            Branch { keys, vals, child } => {
+                match keys.binary_search(&key) {
+                    Ok(i) => { keys[i] = key; vals[i] = val; },
+                    Err(i) => {
+                        child[i].insert2(key, val).if_some(|(k, v, ch)| {
+                            if keys.full() {
+                                if i == M / 2 {
+                                    ret = Some((k, v, Branch { 
+                                        keys  : keys.split(), 
+                                        vals  : vals.split(),
+                                        child : child.split(),
+                                     }));
+                                } else {
+                                    let mut k2 = keys.split();
+                                    let mut v2 = vals.split();
+                                    let mut c2 = child.split();
+                                    let (k, v) = if i < M / 2 {
+                                        keys.insert(i, k);
+                                        vals.insert(i, v);
+                                        child.insert(i + 1, ch);
+                                        (keys.raw_pop(), vals.raw_pop())
+                                    } else {
+                                        k2.insert(i - M / 2, k);
+                                        v2.insert(i - M / 2, v);
+                                        c2.insert(i - M / 2 + 1, ch);
+                                        (k2.raw_pop(), v2.raw_pop())
+                                    };
+                                    ret = Some ((k, v, Branch {
+                                        keys  : k2,
+                                        vals  : v2,
+                                        child : c2,
+                                    }));
+                                }
+                            } else {
+                                keys.insert(i, k);
+                                vals.insert(i, v);
+                                child.insert(i + 1, ch);
+                            }
+                        });
+                    },
+                }
+            },
+            Leaf { keys, vals } => {
+
+            },
+            Seed => {
+                *self = Leaf { 
+                    keys: Arr::from_item(key), 
+                    vals: Arr::from_item(val),
+                }
+            }
+        }
+        */
+        ret
+    }
+
+    fn decompose<F, R>(&mut self, f: F) -> R
+    where 
+        F: Fn(&mut Arr<K, M>, &mut Arr<V, M>, Option<&mut Arr<Self, N>>) 
+            -> R,
+    {
+        match self {
+            Branch { keys, vals, child } => {
+                f(keys, vals, Some(child))
+            },
+            Leaf   { keys, vals } => {
+                f(keys, vals, None)
+            },
+            Seed => {
+                let mut keys = Arr::new();
+                let mut vals = Arr::new();
+                let     res  = f(&mut keys, &mut vals, None);
+                *self = Leaf { keys, vals };
+                res
             },
         }
     }
@@ -379,7 +541,19 @@ where
         }
         key_val.unwrap()
     }
+
+    /// Returns the index of the given key in the current node's key array as
+    /// OK(index), or returns the insertion point as Err(index).
+    /// 
+    fn search(&mut self, key: &K) -> Result<usize, usize> {
+        match self {
+            Branch  { keys, .. } => { keys.binary_search(key) },
+            Leaf    { keys, .. } => { keys.binary_search(key) },
+            Seed                 => { Err(0) },
+        }
+    }
 }
+
 impl<K, V, const M: usize, const N: usize> Default for Node<K, V, M, N> {
 
     /// Returns the default value for `Node`, which is the variant `Seed`.
@@ -389,6 +563,35 @@ impl<K, V, const M: usize, const N: usize> Default for Node<K, V, M, N> {
     }
 }
 
+impl<K, V, const M: usize, const N: usize> fmt::Debug for Node<K, V, M, N> 
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    /// Customizes debug print output making `Node` appear as a simple list
+    /// of key/value pairs and holding a field of children.
+    /// 
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Seed => {
+                write!(f, "Seed")
+            }
+            Branch { keys, vals, child } => {
+                let pairs = keys.into_iter().zip(vals).collect::<Vec<_>>();
+                f.debug_struct("Branch")
+                 .field("pairs", &pairs)
+                 .field("child", child)
+                 .finish()
+            },
+            Leaf { keys, vals } => {
+                let pairs = keys.into_iter().zip(vals).collect::<Vec<_>>();
+                f.debug_struct("Leaf")
+                 .field("pairs", &pairs)
+                 .finish()
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -435,8 +638,8 @@ mod tests {
 
     #[test]
     fn example() {
-        let mut bt6 = BTree6::new();    // Order 6 BTree.
-        let mut bt8 = btree_order!(8);  // Order 8 - arbitrary order via macro.
+        let mut bt6  = BTree6::new();    // Order 6 BTree.
+        let mut bt8  = btree_order!(8);  // Order 8 - arbitrary order via macro.
 
         let kv = [(10, 'j'), (20, 't'), (5, 'e'), (6,  'f'), 
                   (12, 'l'), (30, '~'), (7, 'g'), (17, 'q')];
@@ -453,5 +656,17 @@ mod tests {
             assert_eq!(bt6.get(&n), None);
             assert_eq!(bt8.get(&n), None);
         }        
+    }
+
+    #[test]
+    fn foo() {
+        let mut bt3 = BTree3::new();
+        let     d   = [ 1,  3,  7, 10, 11, 13, 14, 15, 18, 16, 19, 
+                       24, 25, 26, 21,  4,  5, 20, 22,  2, 17, 12, 6];
+        for n in d {
+            bt3.insert(n, char::from(n));
+            println!("{:#?}", &bt3);
+        }
+        println!("{:#?}", bt3);
     }
 }

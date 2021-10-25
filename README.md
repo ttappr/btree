@@ -24,6 +24,8 @@ is fully implemented.
 ## Example Code
 
 ```rust
+    use btree::*;
+    
     fn example() {
         let mut bt6 = BTree6::new();    // Order 6 BTree.
         let mut bt8 = btree_order!(8);  // Order 8 - arbitrary order via macro.
