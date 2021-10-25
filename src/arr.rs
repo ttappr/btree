@@ -50,23 +50,6 @@ where
         self.arr.1 == S as u8
     }
 
-    pub(crate) fn last(&self) -> &T {
-        &self.arr.0[self.len() - 1]
-    }
-
-    pub(crate) fn first(&self) -> &T {
-        &self.arr.0[0]
-    }
-
-    /// Returns the element at the given index if one is present, or `None`
-    /// if the index is larger than the number of elements as given by 
-    /// `.len()`.
-    /// 
-    pub(crate) fn get(&self, idx: usize) -> Option<&T> {
-        if idx < self.len() { Some(&self.arr.0[idx]) } 
-        else                { None                   }
-    }
-
     /// Returns `Some(&mut T)` if the index is valid; `None` otherwise.
     /// 
     #[allow(unused)]

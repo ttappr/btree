@@ -1,11 +1,9 @@
 use std::fmt;
 use std::mem::{replace, take};
-use std::cmp::Ordering;
 
 use crate::arr::*;
 use crate::if_good::*;
 
-use Ordering::*;
 use Node::*;
 
 
@@ -159,30 +157,6 @@ where
         }
     }
 
-    /// Pops the last key and value from the current node. Panics if the
-    /// node is empty.
-    /// 
-    fn pop(&mut self) -> (K, V) {
-        match self {
-            Branch { keys, vals, .. } => (keys.raw_pop(), vals.raw_pop()),
-            Leaf   { keys, vals     } => (keys.raw_pop(), vals.raw_pop()),
-            Seed                      => panic!("Popping from a `Seed`."),
-        }
-    }
-
-    /// Pops the last key and value from the current node. Panics if the
-    /// node is empty.
-    /// 
-    fn pop_front(&mut self) -> (K, V) {
-        match self {
-            Branch { keys, vals, .. } => (keys.raw_pop_front(), 
-                                          vals.raw_pop_front()),
-            Leaf   { keys, vals     } => (keys.raw_pop_front(), 
-                                          vals.raw_pop_front()),
-            Seed                      => panic!("Popping from a `Seed`."),
-        }
-    }
-
     /// Returns the node, replacing `self` with the `Seed` variant.
     /// 
     fn take(&mut self) -> Self {
@@ -203,43 +177,6 @@ where
                 keys.binary_search(key).map(|i| &vals[i]).ok()
             },
             Seed => None,
-        }
-    }
-
-    /// Inserts the given key into the tree, or updates the existing matching
-    /// key.
-    /// 
-    fn insert_bak(&mut self, k: K, v: V) {
-        match self {
-            Branch { keys, vals, child } => {
-                match keys.binary_search(&k) {
-                    Err(i) => {
-                        if child[i].full() {
-                            let (k, v) = child[i].pop();
-                            let ch     = child[i].split();
-
-                            child.insert(i + 1, ch);
-                            keys.insert(i, k);
-                            vals.insert(i, v);
-                        }
-                        child[i].insert(k, v);
-                    }, 
-                    Ok(i) => { keys[i] = k; vals[i] = v; }
-                }
-            },
-            Leaf { keys, vals } => {
-                match keys.binary_search(&k) {
-                    Err(i) => { keys.insert(i, k); vals.insert(i, v); },
-                    Ok(i)  => { keys[i] = k;       vals[i] = v;       },
-                }
-            },
-            Seed => { 
-                let mut keys = Arr::new();
-                let mut vals = Arr::new();
-                keys.push(k);
-                vals.push(v);
-                *self = Leaf { keys, vals };
-            },
         }
     }
 
@@ -345,25 +282,6 @@ where
             }
         }
         retval
-    }
-
-    /// Splits a node in half, returning a new node containing the larger keys.
-    /// 
-    fn split(&mut self) -> Node<K, V, M, N> {
-        match self {
-            Branch { keys, vals, child } => {
-                let k2 = keys.split();
-                let v2 = vals.split();
-                let c2 = child.split();
-                Branch { keys: k2, vals: v2, child: c2 }
-            },
-            Leaf { keys, vals } => {
-                let k2 = keys.split();
-                let v2 = vals.split();
-                Leaf { keys: k2, vals: v2 }
-            },
-            Seed => panic!("Can't split a Seed."),
-        }
     }
 
     /// Removes the matching key and its associated value from the tree. The
@@ -473,17 +391,6 @@ where
             }
         }
         key_val.unwrap()
-    }
-
-    /// Returns the index of the given key in the current node's key array as
-    /// OK(index), or returns the insertion point as Err(index).
-    /// 
-    fn search(&mut self, key: &K) -> Result<usize, usize> {
-        match self {
-            Branch  { keys, .. } => { keys.binary_search(key) },
-            Leaf    { keys, .. } => { keys.binary_search(key) },
-            Seed                 => { Err(0) },
-        }
     }
 }
 
