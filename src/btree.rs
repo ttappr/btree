@@ -381,28 +381,6 @@ where
         retval
     }
 
-    fn decompose<F, R>(&mut self, f: F) -> R
-    where 
-        F: Fn(&mut Arr<K, M>, &mut Arr<V, M>, Option<&mut Arr<Self, N>>) 
-            -> R,
-    {
-        match self {
-            Branch { keys, vals, child } => {
-                f(keys, vals, Some(child))
-            },
-            Leaf   { keys, vals } => {
-                f(keys, vals, None)
-            },
-            Seed => {
-                let mut keys = Arr::new();
-                let mut vals = Arr::new();
-                let     res  = f(&mut keys, &mut vals, None);
-                *self = Leaf { keys, vals };
-                res
-            },
-        }
-    }
-
     /// Splits a node in half, returning a new node containing the larger keys.
     /// 
     fn split(&mut self) -> Node<K, V, M, N> {
