@@ -90,22 +90,14 @@ where
     /// value if the key was already present.
     /// 
     pub fn insert(&mut self, key: K, val: V) {
-        if self.root.full() {
-            match self.root.search(&key) {
-                Ok(i) => { },
-                Err(i) => { },
-            }
-            let mut ch1 = self.root.take();
-            let mut ch2 = ch1.split();
-            let (k, v)  = ch2.pop_front();
-            self.root = Branch { 
-                keys  : Arr::from_item(k), 
-                vals  : Arr::from_item(v), 
-                child : Arr::from_items(&mut [ch1, ch2]),
-            }
-        } else {
-            self.root.insert(key, val);
-        }
+        self.root.insert(key, val).if_some(|(k, v, rt_child)| {
+            let lt_child = self.root.take();
+            self.root = Branch {
+                keys: Arr::from_item(k),
+                vals: Arr::from_item(v),
+                child: Arr::from_items(&mut [lt_child, rt_child]),
+            };
+        });
     }
 
     /// Removes the matching key from the tree and returns its associated
@@ -191,32 +183,6 @@ where
         }
     }
 
-    fn last_key(&mut self) -> &K {
-        match self {
-            Branch { keys, .. } => keys.last(),
-            Leaf   { keys, .. } => keys.last(),
-            Seed                => panic!("`Seed` has no keys."),
-        }
-    }
-
-    fn first_key(&mut self) -> &K {
-        match self {
-            Branch { keys, .. } => keys.first(),
-            Leaf   { keys, .. } => keys.first(),
-            Seed                => panic!("`Seed` has no keys."),
-        }
-    }    
-
-    /// Reports whether the node has reached the maximum key population.
-    /// 
-    fn full(&self) -> bool {
-        match self {
-            Branch { keys, .. } => keys.full(),
-            Leaf   { keys, .. } => keys.full(),
-            Seed                => false,
-        }
-    }
-
     /// Returns the node, replacing `self` with the `Seed` variant.
     /// 
     fn take(&mut self) -> Self {
@@ -243,7 +209,7 @@ where
     /// Inserts the given key into the tree, or updates the existing matching
     /// key.
     /// 
-    fn insert(&mut self, k: K, v: V) {
+    fn insert_bak(&mut self, k: K, v: V) {
         match self {
             Branch { keys, vals, child } => {
                 match keys.binary_search(&k) {
@@ -282,7 +248,7 @@ where
     /// to accommodate a new entry, the new right child node split off will be 
     /// returned as `Some(right_child)`; otherwise `None` is returned.
     /// 
-    fn insert2(&mut self, key: K, val: V) -> Option<(K, V, Self)> {
+    fn insert(&mut self, key: K, val: V) -> Option<(K, V, Self)> {
         let mut retval = None;
         match self {
             Branch { keys, vals, child } => {
@@ -294,7 +260,7 @@ where
                     Err(i) => {
                         // Key doesn't exist in current node Send down to 
                         // child i.
-                        child[i].insert2(key, val).if_some(|(k, v, ch)| {
+                        child[i].insert(key, val).if_some(|(k, v, ch)| {
                             // We get here if current node is full, and insert 
                             // just caused a descendant node to split, and the
                             // key isn't already in the tree.
@@ -632,7 +598,6 @@ mod tests {
                        24, 25, 26, 21,  4,  5, 20, 22,  2, 17, 12, 6];
         for n in d {
             bt3.insert(n, char::from(n));
-            println!("{:#?}", &bt3);
         }
         println!("{:#?}", bt3);
     }
