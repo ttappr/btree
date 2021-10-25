@@ -132,31 +132,6 @@ where
     }
 }
 
-#[allow(unused)]
-macro_rules! decomp {
-    ($node:expr, $keys:ident, $vals:ident, $child:ident, $code:block) => {{
-        match $node {
-            Branch { keys: $keys, vals: $vals, child } => {
-                let $child = Some(child);
-                $code
-            },
-            Leaf { keys: $keys, vals: $vals } => {
-                let $child = Option::<Arr<Self, N>>::None;
-                $code
-            },
-            Seed => {
-                let mut $keys  = Arr::new();
-                let mut $vals  = Arr::new();
-                let     $child = Option::<Arr<Self, N>>::None;
-                let     ret    = $code;
-                        *$node = Leaf { $keys, $vals };
-                ret
-            },
-        }   
-    }}
-}
-
-
 /// The node type of the tree. The bulk of the tree's functionality is coded
 /// within this class.
 /// 
@@ -308,42 +283,24 @@ where
     /// returned as `Some(right_child)`; otherwise `None` is returned.
     /// 
     fn insert2(&mut self, key: K, val: V) -> Option<(K, V, Self)> {
-        let mut ret = None;
-        let r = decomp!( self, keys, vals, child, {
-            match keys.binary_search(&key) {
-                Ok(i) => { None },
-                Err(i) => { 
-                    if let Some(mut child) = child {
-                        child[i].insert2(key, val).map(|(k, v, ch)| {
-                            if keys.full() {
-                                let mut k2 = keys.split();
-                                let mut v2 = vals.split();
-                                let mut c2 = child.split();
-                                let (k, v) = if i < M / 2 {
-                                    keys.insert(i, k);
-                                    vals.insert(i, v);
-                                    child.insert(i + 1, ch);
-                                    (K::default(), V::default())
-                                } else {
-                                    (K::default(), V::default())
-                                };
-                                Some((k, v))
-                            } else { None }
-                        })
-                    } else { None }
-                },
-            }
-        });
-/*
+        let mut retval = None;
         match self {
             Branch { keys, vals, child } => {
                 match keys.binary_search(&key) {
-                    Ok(i) => { keys[i] = key; vals[i] = val; },
+                    Ok(i) => { 
+                        // Key already exists in current node. Update value.
+                        vals[i] = val; 
+                    },
                     Err(i) => {
+                        // Key doesn't exist in current node Send down to 
+                        // child i.
                         child[i].insert2(key, val).if_some(|(k, v, ch)| {
+                            // We get here if current node is full, and insert 
+                            // just caused a descendant node to split, and the
+                            // key isn't already in the tree.
                             if keys.full() {
                                 if i == M / 2 {
-                                    ret = Some((k, v, Branch { 
+                                    retval = Some((k, v, Branch { 
                                         keys  : keys.split(), 
                                         vals  : vals.split(),
                                         child : child.split(),
@@ -361,9 +318,9 @@ where
                                         k2.insert(i - M / 2, k);
                                         v2.insert(i - M / 2, v);
                                         c2.insert(i - M / 2 + 1, ch);
-                                        (k2.raw_pop(), v2.raw_pop())
+                                        (k2.raw_pop_front(), v2.raw_pop_front())
                                     };
-                                    ret = Some ((k, v, Branch {
+                                    retval = Some ((k, v, Branch {
                                         keys  : k2,
                                         vals  : v2,
                                         child : c2,
@@ -379,7 +336,40 @@ where
                 }
             },
             Leaf { keys, vals } => {
-
+                match keys.binary_search(&key) {
+                    Ok(i) => {
+                        vals[i] = val;
+                    },
+                    Err(i) => {
+                        if keys.full() {
+                            if i == M / 2 {
+                                retval = Some((key, val, Leaf {
+                                    keys: keys.split(),
+                                    vals: vals.split(),
+                                }));
+                            } else {
+                                let mut k2 = keys.split();
+                                let mut v2 = vals.split();
+                                let (k, v) = if i < M / 2 {
+                                    keys.insert(i, key);
+                                    vals.insert(i, val);
+                                    (keys.raw_pop(), vals.raw_pop())
+                                } else {
+                                    k2.insert(i - M / 2, key);
+                                    v2.insert(i - M / 2, val);
+                                    (k2.raw_pop_front(), v2.raw_pop_front())
+                                };
+                                retval = Some((k, v, Leaf {
+                                    keys: k2,
+                                    vals: v2,
+                                }));
+                            }
+                        } else {
+                            keys.insert(i, key);
+                            vals.insert(i, val);
+                        }
+                    }
+                }
             },
             Seed => {
                 *self = Leaf { 
@@ -388,8 +378,7 @@ where
                 }
             }
         }
-        */
-        ret
+        retval
     }
 
     fn decompose<F, R>(&mut self, f: F) -> R
