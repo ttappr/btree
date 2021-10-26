@@ -451,7 +451,8 @@ where
         };
         let mut builder = f.debug_struct(variant);
 
-        if let Some(NodeFields { keys, vals, child }) = self.fields() {
+        self.fields().if_some(|NodeFields { keys, vals, child }| {
+        
             if vals.data_type_is_0_sized() {
                 let data = keys.into_iter().collect::<Vec<_>>();
                 builder.field("keys", &data);
@@ -459,10 +460,8 @@ where
                 let data = keys.into_iter().zip(vals).collect::<Vec<_>>();
                 builder.field("pairs", &data);
             }
-            if let Some(child) = child {
-                builder.field("child", child);
-            }
-        }
+            child.if_some(|child| { builder.field("child", child); });
+        });
         builder.finish()
     }
 }
@@ -563,7 +562,7 @@ mod tests {
         for n in d {
             bt3.insert(n, ());
         }
-        //println!("{:#?}", bt3);
+        println!("{:#?}", bt3);
     }
 
     #[test]
@@ -580,8 +579,6 @@ mod tests {
         for (k, v) in k.iter().copied().zip(v.iter().copied()) {
             bt.insert(k, v);
         }
-        println!("Overwritten tree...");
-        println!("{:#?}", bt);
     }
 
     #[test]
