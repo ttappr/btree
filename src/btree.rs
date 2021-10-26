@@ -250,10 +250,9 @@ where
                         // Key doesn't exist in current node Send down to 
                         // child `i`.
                         child[i].insert(key, val).if_some(|(k, v, ch)| {
-                            // We get here when a child was split during insert.
-                            // `(k, v, ch)` holds the new right sibling of 
-                            // child[i]. Values `k` and `v` are the median
-                            // key and value between left and right siblings.
+                            // A child node split. `k` and `v` are the median
+                            // key and value between `child[i]` and its new
+                            // sibling, `ch`.
                             if keys.full() {
                                 let mut k1 = keys.splitter(i, k);
                                 let mut v1 = vals.splitter(i, v);
