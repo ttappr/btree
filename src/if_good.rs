@@ -4,7 +4,7 @@ use std::marker::Sized;
 /// Trait to add methods to `Result` similar to `.map()` and `.map_or_else()`, 
 /// but don't return a value.
 ///
-pub(crate) trait IfOK<T, E> {
+pub(crate) trait IfOk<T, E> {
     fn if_ok<F>(self, _f: F)
     where 
         F: FnMut(T),
@@ -62,7 +62,7 @@ impl<T> IfSome<T> for Option<T> {
     }
 }
 
-impl<T, E> IfOK<T, E> for Result<T, E> {
+impl<T, E> IfOk<T, E> for Result<T, E> {
     /// When applied to a `Result`, the provided callback is called when
     /// the `Result` is the `Ok` variant, passing its wrapped value to the
     /// callback.

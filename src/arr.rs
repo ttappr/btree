@@ -1,5 +1,5 @@
 use std::fmt;
-use std::mem::take;
+use std::mem::{replace, take};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use array_macro::array;
@@ -32,8 +32,8 @@ where
 
     pub(crate) fn from_items(items: &mut [T]) -> Self {
         let mut arr = Arr::new();
-        for i in 0..items.len() {
-            arr.push(take(&mut items[i]));
+        for item in items {
+            arr.push(take(item));
         }
         arr
     }
@@ -50,19 +50,15 @@ where
         self.arr.1 == S as u8
     }
 
-    /// Returns `Some(&mut T)` if the index is valid; `None` otherwise.
-    /// 
-    #[allow(unused)]
-    pub(crate) fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
-        if idx < self.len() { Some(&mut self.arr.0[idx]) } 
-        else                { None                       }
-    }
-
     /// Takes the element at the given index, replacing it with the default
     /// value for `T`.
     /// 
     fn take(&mut self, idx: usize) -> T {
         take(&mut self.arr.0[idx])
+    }
+
+    pub(crate) fn replace(&mut self, idx: usize, replacement: T) -> T {
+        replace(&mut self.arr.0[idx], replacement)
     }
 
     /// Splits the `Arr` in two and returns a new `Arr` containing the elements
@@ -260,18 +256,6 @@ where
     /// 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.arr.0[0..self.len()].iter()).finish()
-    }
-}
-
-impl<T, const S: usize> fmt::Display for Arr<T, S> 
-where
-    T: fmt::Debug 
-{
-    /// Customizes debug print output making `Arr` appear as a simple array
-    /// directly containing the elements of the internal array.
-    /// 
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.deref())
     }
 }
 

@@ -13,5 +13,6 @@
 mod btree;
 mod if_good;
 mod arr;
+mod splitter;
 
 pub use crate::btree::{BTree, BTree3, BTree6, BTree9};

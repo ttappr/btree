@@ -7,4 +7,5 @@ edition = "2018"
 
 [dependencies]
 array-macro = "2.1"
+rand = "0.8"
 

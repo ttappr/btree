@@ -1,7 +1,8 @@
 use std::fmt;
-use std::mem::{replace, take};
+use std::mem::take;
 
 use crate::arr::*;
+use crate::splitter::*;
 use crate::if_good::*;
 
 use Node::*;
@@ -91,9 +92,9 @@ where
         self.root.insert(key, val).if_some(|(k, v, rt_child)| {
             let lt_child = self.root.take();
             self.root = Branch {
-                keys: Arr::from_item(k),
-                vals: Arr::from_item(v),
-                child: Arr::from_items(&mut [lt_child, rt_child]),
+                keys  : Arr::from_item(k),
+                vals  : Arr::from_item(v),
+                child : Arr::from_items(&mut [lt_child, rt_child]),
             };
         });
     }
@@ -113,7 +114,7 @@ where
 impl<K, V, const M: usize, const N: usize> Default for BTree<K, V, M, N> 
 where
     K: Default + Ord,
-    V: Default,    
+    V: Default,
 {
     /// Returns a new empty BTree.
     /// 
@@ -180,10 +181,29 @@ where
         }
     }
 
+    fn is_seed(&self) -> bool {
+        matches!(self, Seed)
+    }
+
+    fn fields_mut(&mut self) -> (&mut Arr<K, M>, 
+                                 &mut Arr<V, M>, 
+                                 Option<&mut Arr<Self, N>>) 
+    {
+        match self {
+            Branch { keys, vals, child } => (keys, vals, Some(child)),
+            Leaf   { keys, vals        } => (keys, vals, None),
+            Seed => panic!("Called .keys_vals_mut() on Seed."),
+        }
+    }
+
     /// Inserts the given key and value into the tree, or updates an existing
     /// key's value. If the node this is invoked on was full and had to be split
     /// to accommodate a new entry, the new right child node split off will be 
-    /// returned as `Some(right_child)`; otherwise `None` is returned.
+    /// returned along with the key and value separating the (now) left node and
+    /// new right node. The new node will need to be inserted into the caller's
+    /// child array, and the key/value will also need to be inserted in the 
+    /// caller's respective arrays. If a split didn't occur, this function
+    /// return `None`.
     /// 
     fn insert(&mut self, key: K, val: V) -> Option<(K, V, Self)> {
         let mut retval = None;
@@ -198,37 +218,31 @@ where
                         // Key doesn't exist in current node Send down to 
                         // child i.
                         child[i].insert(key, val).if_some(|(k, v, ch)| {
-                            // We get here if current node is full, and insert 
-                            // just caused a descendant node to split, and the
-                            // key isn't already in the tree.
+                            // We get here when a child was split during insert.
+                            // `(k, v, ch)` holds the new right sibling of 
+                            // child[i]. Values `k` and `v` separate these left
+                            // and right siblings.
                             if keys.full() {
-                                if i == M / 2 {
-                                    retval = Some((k, v, Branch { 
-                                        keys  : keys.split(), 
-                                        vals  : vals.split(),
-                                        child : child.split(),
-                                     }));
-                                } else {
-                                    let mut k2 = keys.split();
-                                    let mut v2 = vals.split();
-                                    let mut c2 = child.split();
-                                    let (k, v) = if i < M / 2 {
-                                        keys.insert(i, k);
-                                        vals.insert(i, v);
-                                        child.insert(i + 1, ch);
-                                        (keys.raw_pop(), vals.raw_pop())
-                                    } else {
-                                        k2.insert(i - M / 2, k);
-                                        v2.insert(i - M / 2, v);
-                                        c2.insert(i - M / 2 + 1, ch);
-                                        (k2.raw_pop_front(), v2.raw_pop_front())
-                                    };
-                                    retval = Some ((k, v, Branch {
-                                        keys  : k2,
-                                        vals  : v2,
-                                        child : c2,
-                                    }));
-                                }
+
+                                let mut k1 = ArrSplitter::new(keys, i, k);
+                                let mut v1 = ArrSplitter::new(vals, i, v);
+                                let mut c1 = ArrSplitter::new(child, i + 1, ch);
+
+                                let k2 = k1.split_at(M / 2 + 1);
+                                let v2 = v1.split_at(M / 2 + 1);
+                                let c2 = c1.split_at(M / 2 + 1);
+                                let k  = k1.raw_pop();
+                                let v  = v1.raw_pop();
+
+                                k1.consolidate();
+                                v1.consolidate();
+                                c1.consolidate();
+
+                                retval = Some ((k, v, Branch {
+                                    keys  : k2.into_inner(),
+                                    vals  : v2.into_inner(),
+                                    child : c2.into_inner(),
+                                }));
                             } else {
                                 keys.insert(i, k);
                                 vals.insert(i, v);
@@ -245,28 +259,21 @@ where
                     },
                     Err(i) => {
                         if keys.full() {
-                            if i == M / 2 {
-                                retval = Some((key, val, Leaf {
-                                    keys: keys.split(),
-                                    vals: vals.split(),
-                                }));
-                            } else {
-                                let mut k2 = keys.split();
-                                let mut v2 = vals.split();
-                                let (k, v) = if i < M / 2 {
-                                    keys.insert(i, key);
-                                    vals.insert(i, val);
-                                    (keys.raw_pop(), vals.raw_pop())
-                                } else {
-                                    k2.insert(i - M / 2, key);
-                                    v2.insert(i - M / 2, val);
-                                    (k2.raw_pop_front(), v2.raw_pop_front())
-                                };
-                                retval = Some((k, v, Leaf {
-                                    keys: k2,
-                                    vals: v2,
-                                }));
-                            }
+                            let mut k1 = ArrSplitter::new(keys, i, key);
+                            let mut v1 = ArrSplitter::new(vals, i, val);
+
+                            let k2 = k1.split_at(M / 2 + 1);
+                            let v2 = v1.split_at(M / 2 + 1);
+                            let k  = k1.raw_pop();
+                            let v  = v1.raw_pop();
+
+                            k1.consolidate();
+                            v1.consolidate();
+
+                            retval = Some ((k, v, Leaf {
+                                keys  : k2.into_inner(),
+                                vals  : v2.into_inner(),
+                            }));                            
                         } else {
                             keys.insert(i, key);
                             vals.insert(i, val);
@@ -292,16 +299,16 @@ where
             Branch { keys, vals, child } => {
                 match keys.binary_search(key) {
                     Ok(i) => {
-                        if child[i].n_keys() >= M / 2 {
+                        if child[i].n_keys() > M / 2 {
                             let (k, v) = child[i].max_descendant();
                             keys[i] = k;
-                            Some(replace(&mut vals[i], v))
+                            Some(vals.replace(i, v))
                         } 
-                        else if child[i + 1].n_keys() >= M / 2 {
+                        else if child[i + 1].n_keys() > M / 2 {
                             let (k, v) = child[i + 1].min_descendant();
                             keys[i] = k;
-                            Some(replace(&mut vals[i], v))
-                        } 
+                            Some(vals.replace(i, v))
+                        }
                         else {
                             let c = child.remove(i + 1);
                             let _ = keys.remove(i);
@@ -331,7 +338,7 @@ where
     /// Combines the current node with `other`. The nodes must be of the same
     /// variant.
     /// 
-    fn merge(&mut self, other: Node<K, V, M, N>) {
+    fn merge(&mut self, other: Self) {
         match (self, other) {
             (Branch { keys: k1, vals: v1, child: c1 }, 
              Branch { keys: k2, vals: v2, child: c2 }) => {
@@ -345,6 +352,29 @@ where
                 v1.merge(v2);
              },
             _ => panic!("Invalid operands for Node::merge()."),
+        }
+    }
+
+    fn split(&mut self) -> Self {
+        self.split_at(M / 2)
+    }
+
+    fn split_at(&mut self, i: usize) -> Self {
+        match self {
+            Branch { keys, vals, child } => {
+                Branch { 
+                    keys  : keys.split_at(i),
+                    vals  : vals.split_at(i),
+                    child : child.split_at(i),
+                }
+            },
+            Leaf { keys, vals } => {
+                Leaf {
+                    keys  : keys.split_at(i),
+                    vals  : vals.split_at(i),
+                }
+            },
+            Seed => { Seed },
         }
     }
 
@@ -433,8 +463,10 @@ where
     }
 }
 
+
 #[cfg(test)]
 mod tests {
+    use rand::prelude::*;
     use crate::btree::*;
     
     #[test]
@@ -445,6 +477,7 @@ mod tests {
         }
         println!("{:#?}", t);
     }
+
     #[test] 
     fn remove() {
         let mut t = BTree3::new();
@@ -462,7 +495,7 @@ mod tests {
     }
     
     #[test]
-    fn search() {
+    fn get() {
         let mut t = BTree3::new();
         
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
@@ -499,12 +532,14 @@ mod tests {
     }
 
     #[test]
-    fn foo() {
+    fn many_insertions() {
         let mut bt3 = BTree3::new();
-        let     d   = [ 1,  3,  7, 10, 11, 13, 14, 15, 18, 16, 19, 
-                       24, 25, 26, 21,  4,  5, 20, 22,  2, 17, 12, 6];
+        let mut d   = (0..200).collect::<Vec<_>>();
+
+        d.shuffle(&mut rand::thread_rng());
+
         for n in d {
-            bt3.insert(n, char::from(n));
+            bt3.insert(n, ());
         }
         println!("{:#?}", bt3);
     }
