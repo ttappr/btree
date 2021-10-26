@@ -196,14 +196,16 @@ where
     /// have the child array if the node was a `Branch`. A `Seed` node returns
     /// `None`.
     /// 
-    #[allow(dead_code)]
-    fn fields_mut(&mut self) 
-        -> Option<(&mut Arr<K, M>, &mut Arr<V, M>, Option<&mut Arr<Self, N>>)> 
+    fn fields(&self) -> Option<NodeFields<K, V, M, N>>
     {
         match self {
-            Branch { keys, vals, child } => Some((keys, vals, Some(child))),
-            Leaf   { keys, vals        } => Some((keys, vals, None)),
-            Seed                         => None,
+            Branch { keys, vals, child } => {
+                Some(NodeFields { keys, vals, child: Some(child) })
+            },
+            Leaf { keys, vals } => {
+                Some(NodeFields { keys, vals, child: None })
+            },
+            Seed => None,
         }
     }
 
@@ -212,12 +214,17 @@ where
     /// have the child array if the node was a `Branch`. A `Seed` node returns
     /// `None`.
     /// 
-    fn fields(&self) -> Option<(&Arr<K, M>, &Arr<V, M>, Option<&Arr<Self, N>>)>
+    #[allow(dead_code)]
+    fn fields_mut(&mut self) -> Option<NodeFieldsMut<K, V, M, N>>
     {
         match self {
-            Branch { keys, vals, child } => Some((keys, vals, Some(child))),
-            Leaf   { keys, vals        } => Some((keys, vals, None)),
-            Seed                         => None,
+            Branch { keys, vals, child } => {
+                Some(NodeFieldsMut { keys, vals, child: Some(child) })
+            },
+            Leaf { keys, vals } => {
+                Some(NodeFieldsMut { keys, vals, child: None })
+            },
+            Seed => None,
         }
     }
 
@@ -228,7 +235,7 @@ where
     /// new right node. The new node will need to be inserted into the caller's
     /// child array, and the key/value will also need to be inserted in the 
     /// caller's respective arrays. If a split didn't occur, this function
-    /// return `None`.
+    /// returns `None`.
     /// 
     fn insert(&mut self, key: K, val: V) -> Option<(K, V, Self)> {
         let mut retval = None;
@@ -444,7 +451,7 @@ where
         };
         let mut builder = f.debug_struct(variant);
 
-        if let Some((keys, vals, child)) = self.fields() {
+        if let Some(NodeFields { keys, vals, child }) = self.fields() {
             if vals.data_type_is_0_sized() {
                 let data = keys.into_iter().collect::<Vec<_>>();
                 builder.field("keys", &data);
@@ -460,6 +467,24 @@ where
     }
 }
 
+/// Internal struct returned by convenience methods to access fields of the 
+/// variants of `Node`.
+/// 
+struct NodeFields<'a, K, V, const M: usize, const N: usize> {
+    keys  : &'a Arr<K, M>,
+    vals  : &'a Arr<V, M>,
+    child : Option<&'a Arr<Node<K, V, M, N>, N>>,
+}
+
+/// Internal struct returned by convenience methods to access fields of the 
+/// variants of `Node`. Mutable version.
+/// 
+#[allow(dead_code)]
+struct NodeFieldsMut<'a, K, V, const M: usize, const N: usize> {
+    keys  : &'a mut Arr<K, M>,
+    vals  : &'a mut Arr<V, M>,
+    child : Option<&'a mut Arr<Node<K, V, M, N>, N>>,
+}
 
 #[cfg(test)]
 mod tests {
