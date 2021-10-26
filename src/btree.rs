@@ -250,7 +250,7 @@ where
                         // Key doesn't exist in current node Send down to 
                         // child `i`.
                         child[i].insert(key, val).if_some(|(k, v, ch)| {
-                            // A child node split. `k` and `v` are the median
+                            // `child[i]` split. `k` and `v` are the median
                             // key and value between `child[i]` and its new
                             // sibling, `ch`.
                             if keys.full() {
