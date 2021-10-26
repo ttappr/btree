@@ -13,7 +13,7 @@ use RefOrConcrete::*;
 /// is invoked, or the instance goes out of scope.
 /// 
 #[derive(Debug)]
-pub(crate) struct ArrSplitter<'a, T, const S: usize> 
+pub(crate) struct Splitter<'a, T, const S: usize> 
 where
     T: Default,
 {
@@ -22,7 +22,7 @@ where
     elm: Option<T>,
 }
 
-impl<'a, T, const S: usize> ArrSplitter<'a, T, S> 
+impl<'a, T, const S: usize> Splitter<'a, T, S> 
 where 
     T: Default,
 {
@@ -30,7 +30,7 @@ where
     /// position `i`.
     /// 
     pub(crate) fn new(arr: &'a mut Arr<T, S>, pos: usize, elm: T) -> Self {
-        ArrSplitter { arr: Ref(arr), pos, elm: Some(elm) }
+        Splitter { arr: Ref(arr), pos, elm: Some(elm) }
     }
 
     /// Splits the array at `i` as if the floating element were already
@@ -41,25 +41,25 @@ where
     /// 
     pub(crate) fn split_at(&mut self, i: usize) -> Self {
         if i < self.pos {
-            ArrSplitter {
+            Splitter {
                 arr: Conc(Arr::split_at(&mut self.arr, i)), 
                 pos: self.pos - i, 
                 elm: self.elm.take() 
             }
         } else if i > self.pos + 1 {
-            ArrSplitter {
+            Splitter {
                 arr: Conc(Arr::split_at(&mut self.arr, i - 1)),
                 pos: 0,
                 elm: None,
             }
         } else if i == self.pos {
-            ArrSplitter {
+            Splitter {
                 arr: Conc(Arr::split_at(&mut self.arr, i)),
                 pos: 0,
                 elm: self.elm.take(),
             }
         } else /* if i == self.pos + 1 */ {
-            ArrSplitter {
+            Splitter {
                 arr: Conc(Arr::split_at(&mut self.arr, i - 1)),
                 pos: 0,
                 elm: None,
@@ -86,7 +86,7 @@ where
         self.consolidate();
         match take(&mut self.arr) {
             Conc(a) => a,
-            _ => panic!("Can only call .into_inner() on Splitter holding a
+            _ => panic!("Can only call .into_inner() on ArrSplitter holding a
                          concrete instance of Arr."),
         }
     }
@@ -94,7 +94,8 @@ where
     /// Causes the internal floating element to be inserted into the internal
     /// `Arr` instance. This should not be called prior to splitting as it will
     /// attempt to insert the floating element into an already full `Arr` and
-    /// cause a panic.
+    /// cause a panic. If an `ArrSplitter` that wasn't split goes out of scope
+    /// this method will be invoked by `.drop()` and also cause a panic.
     /// 
     fn consolidate(&mut self) {
         if self.elm.is_some() {
@@ -103,19 +104,18 @@ where
     }
 }
 
-impl<'a, T, const S: usize> Drop for ArrSplitter<'a, T, S> 
+impl<'a, T, const S: usize> Drop for Splitter<'a, T, S> 
 where
     T: Default,
 {
-    /// Called when a splitter instance is dropped. This method is called and 
-    /// ensures the internal floating element is inserted into the wrapped 
-    /// `Arr`.
+    /// Called when a splitter instance is dropped. This method ensures the 
+    /// internal floating element is inserted into the wrapped `Arr`.
     /// 
     fn drop(&mut self) {
         match &self.arr {
             Conc(_) => self.consolidate(),
-            Ref(_) => self.consolidate(),
-            _ => { },
+            Ref(_)  => self.consolidate(),
+            Void    => { },
         }
     }
 }
@@ -170,7 +170,7 @@ mod test {
     fn pop() {
         let mut v  = (0..10).collect::<Vec<_>>();
         let mut a  = Arr::<_, 10>::from_items(&mut v);
-        let mut s1 = ArrSplitter::new(&mut a, 4, 42);
+        let mut s1 = Splitter::new(&mut a, 4, 42);
         let mut s2 = s1.split_at(6);
 
         s1.consolidate();

@@ -56,6 +56,9 @@ where
         }
     }
 
+    /// Returns `true` if the data type of the `Arr` is Zero-Sized. This is 
+    /// used by `Node`'s debug print.
+    /// 
     pub(crate) fn data_type_is_0_sized(&self) -> bool {
         size_of::<T>() == 0
     }
@@ -63,15 +66,12 @@ where
     /// Returns an object that facilitates splitting an already full `Arr`
     /// instance. The `item` is virtually inserted into the splitter array
     /// at position `i`. It actually floats in another field waiting to be
-    /// either popped or merged in when the `Arr` instance is dropped (or 
-    /// `.consolidate()` is invoked).
+    /// either popped or inserted in the internal `Arr` when the `Spitter` 
+    /// instance is either dropped (or `.into_inner()` is invoked).
     /// 
-    pub(crate) fn splitter(&mut self, 
-                           i: usize, 
-                           item: T
-                          ) -> ArrSplitter<'_, T, S>
+    pub(crate) fn splitter(&mut self, i: usize, item: T) -> Splitter<'_, T, S>
     {
-        ArrSplitter::new(self, i, item)
+        Splitter::new(self, i, item)
     }
 
     /// Gives the number of active elements in the array.

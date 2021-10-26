@@ -264,7 +264,7 @@ where
                                 let k  = k1.pop();
                                 let v  = v1.pop();
 
-                                retval = Some ((k, v, Branch {
+                                retval = Some((k, v, Branch {
                                     keys  : k2.into_inner(),
                                     vals  : v2.into_inner(),
                                     child : c2.into_inner(),
@@ -293,7 +293,7 @@ where
                             let k  = k1.pop();
                             let v  = v1.pop();
 
-                            retval = Some ((k, v, Leaf {
+                            retval = Some((k, v, Leaf {
                                 keys  : k2.into_inner(),
                                 vals  : v2.into_inner(),
                             }));                            
@@ -488,7 +488,21 @@ struct NodeFieldsMut<'a, K, V, const M: usize, const N: usize> {
 mod tests {
     use rand::prelude::*;
     use crate::btree::*;
-    
+
+    trait TreeIFace<K, V> { 
+        fn insert (&mut self, key:  K, val: V); 
+        fn get    (    &self, key: &K)  -> &V; 
+    }
+    impl<K, V, const M: usize, const N: usize> 
+        TreeIFace<K, V> for BTree<K, V, M, N> 
+    where 
+        K: Default + Ord,
+        V: Default,
+    {
+        fn insert (&mut self, key:  K, val: V) { self.insert(key, val); }
+        fn get    (    &self, key: &K ) -> &V  { self.get(key).unwrap() }
+    }
+
     #[test]
     fn insert() {
         let mut t = BTree3::new();
@@ -552,36 +566,55 @@ mod tests {
 
     #[test]
     fn many_insertions() {
-        let mut bt3 = BTree3::new();
-        //let mut bt3 = btree_order!(127);
-        let mut d   = (0..1000).collect::<Vec<_>>();
+        let mut k = (0..1000).collect::<Vec<_>>();
+        let     v = (0..1000).collect::<Vec<_>>();
 
-        d.shuffle(&mut rand::thread_rng());
-
-        for n in d {
-            bt3.insert(n, ());
+        for bt in [&mut BTree3::new() as &mut dyn TreeIFace<_, _>,
+                   &mut BTree6::new(),
+                   &mut BTree9::new(),]
+        {
+            k.shuffle(&mut rand::thread_rng());
+            let it = k.iter().copied().zip(v.iter().copied());
+            
+            for (k, v) in it.clone() {
+                bt.insert(k, v);
+            }            
+            for (k, v) in it {
+                assert_eq!(bt.get(&k), &v);
+            }
         }
-        println!("{:#?}", bt3);
     }
 
     #[test]
     fn overwriting_values() {
         let mut bt  = BTree3::new();
         let mut rng = rand::thread_rng();
-        let mut k   = (0..200).collect::<Vec<_>>();
-        let     v   = (0..200).collect::<Vec<_>>();
+        let mut k   = (0..1000).collect::<Vec<_>>();
+        let     v   = (0..1000).collect::<Vec<_>>();
+
         k.shuffle(&mut rng);
-        for (k, v) in k.iter().copied().zip(v.iter().copied()) {
+        let mut it = k.iter().copied().zip(v.iter().copied());
+        
+        for (k, v) in it.clone() {
             bt.insert(k, v);
         }
+        for (k, v) in it {
+            assert_eq!(bt.get(&k), Some(&v));
+        }
+
         k.shuffle(&mut rng);
-        for (k, v) in k.iter().copied().zip(v.iter().copied()) {
+        it = k.iter().copied().zip(v.iter().copied());
+
+        for (k, v) in it.clone() {
             bt.insert(k, v);
+        }
+        for (k, v) in it {
+            assert_eq!(bt.get(&k), Some(&v));
         }
     }
 
     #[test]
     fn seed() {
-        println!("{:#?}", BTree3::<u32, ()>::new());
+        assert_eq!(format!("{:#?}", Node::<&str, (), 6, 7>::Seed), "Seed");
     }
 }
