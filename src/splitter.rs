@@ -5,23 +5,12 @@ use crate::arr::*;
 
 use RefOrConcrete::*;
 
-/// A convenience class that helps split `Arr` arrays. A single new element
-/// can be added to a wrapped `Arr` instance which is already filled to 
-/// capacity. The splitter object will act as if the element had ben added
-/// and permit splitting the array and popping values from it. 
-/// 
-/// The inner `Arr` can be extracted via the `.into_inner()` if it's in the 
-/// `ArrSplitter` instance that was returned by the `.split_at()` method.
-/// Invoking `.into_inner()` will cause the floating new item to be inserted
-/// into the inner `Arr` if it hasn't already been popped. For the original
-/// splitter holding the `Arr` reference prior to the split, the floating
-/// element will be inserted if it's still there when the splitter goes out
-/// of scope and is dropped, or when `.resolve()` is called.
-/// 
-/// The application of this class is very specific. The expectation is an
-/// `Arr` instance is added along with a floating element and its position on
-/// creation, the array will be split, then the original splitter will have
-/// its last element popped.  
+/// Objects of this class are returned by `Arr::splitter()`. The splitter acts
+/// as an array with methods specific to its usage. The intended use is for
+/// wrapping a mutable `Arr` reference along with an element to be added to
+/// the internal `Arr` after it has been split. The internal array can be filled
+/// to capacity - the element won't be added to it until either `.consolidate()`
+/// is invoked, or the instance goes out of scope.
 /// 
 #[derive(Debug)]
 pub(crate) struct ArrSplitter<'a, T, const S: usize> 
@@ -44,10 +33,11 @@ where
         ArrSplitter { arr: Ref(arr), pos, elm: Some(elm) }
     }
 
-    /// Splits the object at `i` as if the floating element were already
+    /// Splits the array at `i` as if the floating element were already
     /// inserted into the internal array. A new instance of a splitter is
-    /// returned holding the rightmost values. Internally it will hold a 
-    /// concrete instance of `Arr` that can be obtained with `.into_inner()`.
+    /// returned holding the rightmost values. The returned splitter holds a
+    /// concrete instance of `Arr` that can be obtained by calling 
+    /// `.into_inner()`.
     /// 
     pub(crate) fn split_at(&mut self, i: usize) -> Self {
         if i < self.pos {
@@ -77,8 +67,8 @@ where
         }
     }
 
-    /// Pops items off the end of the splitter's virtual array as if the 
-    /// floating element were part of the internal array.
+    /// Pops items off the end of the splitter's array. It behaves as if the
+    /// floating element has already been added to the internal `Arr`.
     /// 
     pub(crate) fn pop(&mut self) -> T {
         if self.elm.is_some() && self.pos == self.arr.len() {
@@ -89,8 +79,8 @@ where
     }
 
     /// Consumes the splitter returning the inner `Arr` instance. This can only
-    /// be invoked on the splitter returned by the `.split_at()` method. The
-    /// floating element will be inserted into the `Arr` if it's still there.
+    /// be invoked on a splitter returned by `.split_at()`, which holds a 
+    /// non-reference instance.
     ///
     pub(crate) fn into_inner(mut self) -> Arr<T, S> {
         self.consolidate();
@@ -102,9 +92,9 @@ where
     }
 
     /// Causes the internal floating element to be inserted into the internal
-    /// `Arr` instance. This should not be called prior to splitting the 
-    /// original `ArrSplitter` as the internal `Arr` will be full and an 
-    /// insertion attempt will cause a panic.
+    /// `Arr` instance. This should not be called prior to splitting as it will
+    /// attempt to insert the floating element into an already full `Arr` and
+    /// cause a panic.
     /// 
     pub(crate) fn consolidate(&mut self) {
         if self.elm.is_some() {
@@ -117,8 +107,9 @@ impl<'a, T, const S: usize> Drop for ArrSplitter<'a, T, S>
 where
     T: Default,
 {
-    /// Called when a splitter instance is dropped. It will ensure the internal
-    /// floating element is inserted into the wrapped `Arr`.
+    /// Called when a splitter instance is dropped. This method is called and 
+    /// ensures the internal floating element is inserted into the wrapped 
+    /// `Arr`.
     /// 
     fn drop(&mut self) {
         match &self.arr {
