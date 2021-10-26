@@ -96,7 +96,7 @@ where
     /// attempt to insert the floating element into an already full `Arr` and
     /// cause a panic.
     /// 
-    pub(crate) fn consolidate(&mut self) {
+    fn consolidate(&mut self) {
         if self.elm.is_some() {
             self.arr.insert(self.pos, self.elm.take().unwrap());
         }
