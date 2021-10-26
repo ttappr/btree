@@ -1,8 +1,10 @@
 use std::fmt;
-use std::mem::{replace, take};
+use std::mem::{replace, size_of, take};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use array_macro::array;
+
+use crate::splitter::*;
 
 /// A custom array object to hold the keys and children of the BTree.
 /// This array object uses the least amount of memory possible. The generic 
@@ -24,18 +26,52 @@ where
         Self { arr: Box::new((array![_ => T::default(); S], 0)) }
     }
 
+    /// Creates a new `Arr` instance from a single item.
+    /// 
     pub(crate) fn from_item(item: T) -> Self {
         let mut arr = Arr::new();
         arr.push(item);
         arr
     }
 
+    /// Creates a new `Arr` instance from a slice of items.
+    /// 
     pub(crate) fn from_items(items: &mut [T]) -> Self {
         let mut arr = Arr::new();
         for item in items {
             arr.push(take(item));
         }
         arr
+    }
+
+    /// Returns a reference to the item at position `i` if it exists; otherwise,
+    /// `None` is returned.
+    /// 
+    #[allow(dead_code)]
+    pub(crate) fn get(&self, i: usize) -> Option<&T> {
+        if i < self.len() {
+            Some(&self.arr.0[i])
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn data_type_is_0_sized(&self) -> bool {
+        size_of::<T>() == 0
+    }
+
+    /// Returns an object that facilitates splitting an already full `Arr`
+    /// instance. The `item` is virtually inserted into the splitter array
+    /// at position `i`. It actually floats in another field waiting to be
+    /// either popped or merged in when the `Arr` instance is dropped (or 
+    /// `.consolidate()` is invoked).
+    /// 
+    pub(crate) fn splitter(&mut self, 
+                           i: usize, 
+                           item: T
+                          ) -> ArrSplitter<'_, T, S>
+    {
+        ArrSplitter::new(self, i, item)
     }
 
     /// Gives the number of active elements in the array.
@@ -57,6 +93,9 @@ where
         take(&mut self.arr.0[idx])
     }
 
+    /// Replaces the element at `idx` with `replacement` and returns the item
+    /// previously at that index.
+    /// 
     pub(crate) fn replace(&mut self, idx: usize, replacement: T) -> T {
         replace(&mut self.arr.0[idx], replacement)
     }
@@ -65,6 +104,7 @@ where
     /// taken from the original starting at index `.len() / 2`. The elements
     /// included in the new `Arr` are removed from the original.
     /// 
+    #[allow(dead_code)]
     pub(crate) fn split(&mut self) -> Arr<T, S> {
         let mid = self.len() / 2;
         self.split_at(mid)
@@ -85,10 +125,9 @@ where
     /// Transfers all elements from `other` into `self` consuming `other`.
     /// 
     pub(crate) fn merge(&mut self, mut other: Arr<T, S>) {
-        assert!(other.len() + self.len() <= S, 
-                "Merging both `Arr` objects would result in an array larger 
-                than the limit `S` ({}).",
-                S);
+        debug_assert!(other.len() + self.len() <= S, 
+                      "Merging both `Arr` objects would result in an array 
+                      larger than the limit `S` ({}).", S);
         for (i, j) in (self.len()..S).zip(0..other.len()) {
             self.arr.0[i] = other.take(j);
         }
@@ -98,7 +137,8 @@ where
     /// Appends the given element on to the end of the array.
     /// 
     pub(crate) fn push(&mut self, elm: T) {
-        assert!(self.len() < S, "Attempt to push element onto full `Arr`.");
+        debug_assert!(self.len() < S, 
+                      "Attempt to push element onto full `Arr`.");
         self.arr.0[self.len()] = elm;
         self.arr.1 += 1;
     }
@@ -116,6 +156,9 @@ where
         }
     }
 
+    /// Pops the last item off the internal array, returning it raw (not in an
+    /// `Option`).
+    /// 
     pub(crate) fn raw_pop(&mut self) -> T {
         if self.arr.1 > 0 {
             self.arr.1 -= 1;
@@ -137,6 +180,9 @@ where
         }
     }
 
+    /// Pops the first element from the array and returns it raw (not wrapped in
+    /// an `Option`).
+    /// 
     pub(crate) fn raw_pop_front(&mut self) -> T {
         if self.arr.1 > 0 {
             self.remove(0)
@@ -149,12 +195,12 @@ where
     /// an `O(S)` operation.
     /// 
     pub(crate) fn insert(&mut self, idx: usize, elm: T) {    
-        assert!(idx <= self.len(), 
-                "Insertion index ({}) > number of elements in array ({}).", 
-                idx, self.len());
-        assert!(!self.full(),    
-                "Attempt to insert into an `Arr` already filled to capacity 
-                ({}).", S);
+        debug_assert!(idx <= self.len(), 
+                      "Insertion index ({}) > number of elements in array 
+                      ({}).", idx, self.len());
+        debug_assert!(!self.full(),    
+                      "Attempt to insert into an `Arr` already filled to 
+                      capacity ({}).", S);
         for i in (idx..self.len()).rev() {
             self.arr.0[i + 1] = self.take(i)
         }
@@ -167,9 +213,9 @@ where
     /// `O(S)` operation.
     ///
     pub(crate) fn remove(&mut self, idx: usize) -> T {
-        assert!(idx < self.len(), 
-                "Attempt to remove item at {} from array of length {}.", 
-                idx, self.len());
+        debug_assert!(idx < self.len(), 
+                      "Attempt to remove item at {} from array of length {}.", 
+                      idx, self.len());
         let ret = self.take(idx);
         for i in idx..self.len() - 1 {
             self.arr.0[i] = self.take(i + 1);
@@ -184,7 +230,7 @@ impl<T, const S: usize> Index<usize> for Arr<T, S> {
     /// Gives `Arr` array indexing features.
     /// 
     fn index(&self, idx: usize) -> &Self::Output {
-        assert!(idx < self.len());
+        debug_assert!(idx < self.len());
         &self.arr.0[idx]
     }
 }
@@ -192,7 +238,7 @@ impl<T, const S: usize> IndexMut<usize> for Arr<T, S> {
     /// Gives `Arr` mutable array indexing.
     /// 
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-        assert!(idx < self.len());
+        debug_assert!(idx < self.len());
         &mut self.arr.0[idx]
     }
 }

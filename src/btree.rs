@@ -2,7 +2,6 @@ use std::fmt;
 use std::mem::take;
 
 use crate::arr::*;
-use crate::splitter::*;
 use crate::if_good::*;
 
 use Node::*;
@@ -41,7 +40,7 @@ pub type BTree9<K, V> = BTree<K, V, 18, 19>;
 #[macro_export]
 macro_rules! btree_order {
     ($order:expr) => {{
-        assert!($order <= 128, "`BTree` order must be <= 128.");
+        assert!($order < 128, "`BTree` order must be <= 128.");
         BTree::<_, _, {$order * 2}, {$order * 2 + 1}>::new()
     }}
 }
@@ -63,7 +62,11 @@ macro_rules! btree_order {
 ///           (must be `order * 2 + 1`).
 /// 
 #[derive(Debug)]
-pub struct BTree<K, V, const M: usize, const N: usize> {
+pub struct BTree<K, V, const M: usize, const N: usize> 
+where
+    K: Default + Ord,
+    V: Default,
+{
     root  : Node<K, V, M, N>,
 }
 
@@ -181,18 +184,40 @@ where
         }
     }
 
+    /// Returns `true` if the node is of the `Seed` variant.
+    /// 
+    #[allow(dead_code)]
     fn is_seed(&self) -> bool {
         matches!(self, Seed)
     }
 
-    fn fields_mut(&mut self) -> (&mut Arr<K, M>, 
-                                 &mut Arr<V, M>, 
-                                 Option<&mut Arr<Self, N>>) 
+    /// Returns the fields of either a `Branch` or `Leaf`. Both variants have
+    /// keys and vals. An `Option` is returned for the `child` field. This will
+    /// have the child array if the node was a `Branch`. A `Seed` node returns
+    /// `None`.
+    /// 
+    #[allow(dead_code)]
+    fn fields_mut(&mut self) 
+        -> Option<(&mut Arr<K, M>, &mut Arr<V, M>, Option<&mut Arr<Self, N>>)> 
     {
         match self {
-            Branch { keys, vals, child } => (keys, vals, Some(child)),
-            Leaf   { keys, vals        } => (keys, vals, None),
-            Seed => panic!("Called .keys_vals_mut() on Seed."),
+            Branch { keys, vals, child } => Some((keys, vals, Some(child))),
+            Leaf   { keys, vals        } => Some((keys, vals, None)),
+            Seed                         => None,
+        }
+    }
+
+    /// Returns the fields of either a `Branch` or `Leaf`. Both variants have
+    /// keys and vals. An `Option` is returned for the `child` field. This will
+    /// have the child array if the node was a `Branch`. A `Seed` node returns
+    /// `None`.
+    /// 
+    fn fields(&self) -> Option<(&Arr<K, M>, &Arr<V, M>, Option<&Arr<Self, N>>)>
+    {
+        match self {
+            Branch { keys, vals, child } => Some((keys, vals, Some(child))),
+            Leaf   { keys, vals        } => Some((keys, vals, None)),
+            Seed                         => None,
         }
     }
 
@@ -216,27 +241,22 @@ where
                     },
                     Err(i) => {
                         // Key doesn't exist in current node Send down to 
-                        // child i.
+                        // child `i`.
                         child[i].insert(key, val).if_some(|(k, v, ch)| {
                             // We get here when a child was split during insert.
                             // `(k, v, ch)` holds the new right sibling of 
-                            // child[i]. Values `k` and `v` separate these left
-                            // and right siblings.
+                            // child[i]. Values `k` and `v` are the median
+                            // key and value between left and right siblings.
                             if keys.full() {
-
-                                let mut k1 = ArrSplitter::new(keys, i, k);
-                                let mut v1 = ArrSplitter::new(vals, i, v);
-                                let mut c1 = ArrSplitter::new(child, i + 1, ch);
+                                let mut k1 = keys.splitter(i, k);
+                                let mut v1 = vals.splitter(i, v);
+                                let mut c1 = child.splitter(i + 1, ch);
 
                                 let k2 = k1.split_at(M / 2 + 1);
                                 let v2 = v1.split_at(M / 2 + 1);
                                 let c2 = c1.split_at(M / 2 + 1);
-                                let k  = k1.raw_pop();
-                                let v  = v1.raw_pop();
-
-                                k1.consolidate();
-                                v1.consolidate();
-                                c1.consolidate();
+                                let k  = k1.pop();
+                                let v  = v1.pop();
 
                                 retval = Some ((k, v, Branch {
                                     keys  : k2.into_inner(),
@@ -259,16 +279,13 @@ where
                     },
                     Err(i) => {
                         if keys.full() {
-                            let mut k1 = ArrSplitter::new(keys, i, key);
-                            let mut v1 = ArrSplitter::new(vals, i, val);
+                            let mut k1 = keys.splitter(i, key);
+                            let mut v1 = vals.splitter(i, val);
 
                             let k2 = k1.split_at(M / 2 + 1);
                             let v2 = v1.split_at(M / 2 + 1);
-                            let k  = k1.raw_pop();
-                            let v  = v1.raw_pop();
-
-                            k1.consolidate();
-                            v1.consolidate();
+                            let k  = k1.pop();
+                            let v  = v1.pop();
 
                             retval = Some ((k, v, Leaf {
                                 keys  : k2.into_inner(),
@@ -338,6 +355,7 @@ where
     /// Combines the current node with `other`. The nodes must be of the same
     /// variant.
     /// 
+    #[allow(dead_code)]
     fn merge(&mut self, other: Self) {
         match (self, other) {
             (Branch { keys: k1, vals: v1, child: c1 }, 
@@ -352,29 +370,6 @@ where
                 v1.merge(v2);
              },
             _ => panic!("Invalid operands for Node::merge()."),
-        }
-    }
-
-    fn split(&mut self) -> Self {
-        self.split_at(M / 2)
-    }
-
-    fn split_at(&mut self, i: usize) -> Self {
-        match self {
-            Branch { keys, vals, child } => {
-                Branch { 
-                    keys  : keys.split_at(i),
-                    vals  : vals.split_at(i),
-                    child : child.split_at(i),
-                }
-            },
-            Leaf { keys, vals } => {
-                Leaf {
-                    keys  : keys.split_at(i),
-                    vals  : vals.split_at(i),
-                }
-            },
-            Seed => { Seed },
         }
     }
 
@@ -435,31 +430,33 @@ impl<K, V, const M: usize, const N: usize> Default for Node<K, V, M, N> {
 
 impl<K, V, const M: usize, const N: usize> fmt::Debug for Node<K, V, M, N> 
 where
-    K: fmt::Debug,
-    V: fmt::Debug,
+    K: fmt::Debug + Default + Ord,
+    V: fmt::Debug + Default,
 {
     /// Customizes debug print output making `Node` appear as a simple list
     /// of key/value pairs and holding a field of children.
     /// 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Seed => {
-                write!(f, "Seed")
+        let variant = match self {
+            Seed          => "Seed",
+            Branch { .. } => "Branch",
+            Leaf   { .. } => "Leaf",
+        };
+        let mut builder = f.debug_struct(variant);
+
+        if let Some((keys, vals, child)) = self.fields() {
+            if vals.data_type_is_0_sized() {
+                let data = keys.into_iter().collect::<Vec<_>>();
+                builder.field("keys", &data);
+            } else {
+                let data = keys.into_iter().zip(vals).collect::<Vec<_>>();
+                builder.field("pairs", &data);
             }
-            Branch { keys, vals, child } => {
-                let pairs = keys.into_iter().zip(vals).collect::<Vec<_>>();
-                f.debug_struct("Branch")
-                 .field("pairs", &pairs)
-                 .field("child", child)
-                 .finish()
-            },
-            Leaf { keys, vals } => {
-                let pairs = keys.into_iter().zip(vals).collect::<Vec<_>>();
-                f.debug_struct("Leaf")
-                 .field("pairs", &pairs)
-                 .finish()
+            if let Some(child) = child {
+                builder.field("child", child);
             }
         }
+        builder.finish()
     }
 }
 
@@ -527,20 +524,43 @@ mod tests {
         }
         for n in [18, 2, 9, 42, 100] {
             assert_eq!(bt6.get(&n), None);
-            assert_eq!(bt8.get(&n), None);
-        }        
+            assert_eq!(bt8.get(&n), None);        }        
     }
 
     #[test]
     fn many_insertions() {
         let mut bt3 = BTree3::new();
-        let mut d   = (0..200).collect::<Vec<_>>();
+        //let mut bt3 = btree_order!(127);
+        let mut d   = (0..1000).collect::<Vec<_>>();
 
         d.shuffle(&mut rand::thread_rng());
 
         for n in d {
             bt3.insert(n, ());
         }
-        println!("{:#?}", bt3);
+        //println!("{:#?}", bt3);
+    }
+
+    #[test]
+    fn overwriting_values() {
+        let mut bt  = BTree3::new();
+        let mut rng = rand::thread_rng();
+        let mut k   = (0..200).collect::<Vec<_>>();
+        let     v   = (0..200).collect::<Vec<_>>();
+        k.shuffle(&mut rng);
+        for (k, v) in k.iter().copied().zip(v.iter().copied()) {
+            bt.insert(k, v);
+        }
+        k.shuffle(&mut rng);
+        for (k, v) in k.iter().copied().zip(v.iter().copied()) {
+            bt.insert(k, v);
+        }
+        println!("Overwritten tree...");
+        println!("{:#?}", bt);
+    }
+
+    #[test]
+    fn seed() {
+        println!("{:#?}", BTree3::<u32, ()>::new());
     }
 }
