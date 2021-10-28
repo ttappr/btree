@@ -74,7 +74,7 @@ where
         if self.elm.is_some() && self.pos == self.arr.len() {
             self.elm.take().unwrap()
         } else {
-            self.arr.raw_pop()
+            self.arr.pop()
         }
     }
 

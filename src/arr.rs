@@ -56,6 +56,14 @@ where
         }
     }
 
+    pub(crate) fn last_mut(&mut self) -> &mut T {
+        &mut self.arr.0[self.len() - 1]
+    }
+
+    pub(crate) fn first_mut(&mut self) -> &mut T {
+        &mut self.arr.0[0]
+    }
+
     /// Returns `true` if the data type of the `Arr` is Zero-Sized. This is 
     /// used by `Node`'s debug print.
     /// 
@@ -143,23 +151,16 @@ where
         self.arr.1 += 1;
     }
 
-    /// Removes and returns the last element in the array as `Some(T). If the 
-    /// array was empty `None` is returned.
-    /// 
-    #[allow(unused)]
-    pub(crate) fn pop(&mut self) -> Option<T> {
-        if self.arr.1 > 0 {
-            self.arr.1 -= 1;
-            Some(self.take(self.len()))
-        } else {
-            None
-        }
+    pub(crate) fn push_front(&mut self, elm: T) {
+        debug_assert!(self.len() < S, 
+                      "Attempt to push element onto full `Arr`.");
+        self.insert(0, elm);    
     }
 
     /// Pops the last item off the internal array, returning it raw (not in an
     /// `Option`).
     /// 
-    pub(crate) fn raw_pop(&mut self) -> T {
+    pub(crate) fn pop(&mut self) -> T {
         if self.arr.1 > 0 {
             self.arr.1 -= 1;
             self.take(self.len())
@@ -168,22 +169,10 @@ where
         }
     }
 
-    /// Removes and returns the first element in the array if there are elements
-    /// in the array; `None` otherwise.
-    /// 
-    #[allow(unused)]
-    pub(crate) fn pop_front(&mut self) -> Option<T> {
-        if self.arr.1 > 0 {
-            Some(self.remove(0))
-        } else {
-            None
-        }
-    }
-
     /// Pops the first element from the array and returns it raw (not wrapped in
     /// an `Option`).
     /// 
-    pub(crate) fn raw_pop_front(&mut self) -> T {
+    pub(crate) fn pop_front(&mut self) -> T {
         if self.arr.1 > 0 {
             self.remove(0)
         } else {

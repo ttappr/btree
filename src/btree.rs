@@ -184,13 +184,6 @@ where
         }
     }
 
-    /// Returns `true` if the node is of the `Seed` variant.
-    /// 
-    #[allow(dead_code)]
-    fn is_seed(&self) -> bool {
-        matches!(self, Seed)
-    }
-
     /// Returns the fields of either a `Branch` or `Leaf`. Both variants have
     /// keys and vals. An `Option` is returned for the `child` field. This will
     /// have the child array if the node was a `Branch`. A `Seed` node returns
@@ -323,12 +316,12 @@ where
                 match keys.binary_search(key) {
                     Ok(i) => {
                         if child[i].n_keys() > M / 2 {
-                            let (k, v) = child[i].max_descendant();
+                            let (k, v) = child[i].get_max_descendant();
                             keys[i] = k;
                             Some(vals.replace(i, v))
                         } 
                         else if child[i + 1].n_keys() > M / 2 {
-                            let (k, v) = child[i + 1].min_descendant();
+                            let (k, v) = child[i + 1].get_min_descendant();
                             keys[i] = k;
                             Some(vals.replace(i, v))
                         }
@@ -344,7 +337,11 @@ where
                         }
                     },
                     Err(i) => {
-                        child[i].remove(key)
+                        let val = child[i].remove(key);
+                        if child[i].n_keys() < M / 2 {
+                            self.feed(i);
+                        }
+                        val
                     },
                 }
             },
@@ -357,23 +354,98 @@ where
             Seed => None,
         }
     }
+    
+    /// If node child[i] is "hungry" (it's population is below M / 2), it needs 
+    /// to be "fed" some keys that it can cannibalize from its siblings, or it 
+    /// could be merged with a sibling if neither adjacent sibling has enough 
+    /// keys to spare.
+    ///
+    #[allow(dead_code)]
+    fn feed(&mut self, i: usize) {
+        match self {
+            Branch { child, .. } => {
+                let last = child.len() - 1;
+                
+                if i > 0 && child[i - 1].n_keys() > M / 2 {
+
+                    let (cs1, cs2) = child.split_at_mut(i);
+                    cs1[0].borrow_left(&mut cs2[i - 1]);
+                } 
+                else if i < last && child[i + 1].n_keys() > M / 2 {
+
+                    let (cs1, cs2) = child.split_at_mut(i + 1);
+                    cs1[i].borrow_right(&mut cs2[0]);
+                }
+                else if i < last {
+                    let c = child.remove(i + 1);
+                    child[i].merge(c);
+                }
+                else if i > 0 {
+                    let c = child.remove(i);
+                    child[i - 1].merge(c);
+                }
+            }
+            _ => panic!("Node::feed() invoked on a Leaf or Seed."),
+        }
+    }
+    
+    fn borrow_right(&mut self, right_sibling: &mut Self) {
+        match (self, right_sibling) {
+            (Branch { keys: ks1, vals: vs1, child: cs1 },
+             Branch { keys: ks2, vals: vs2, child: cs2 }) => {
+                let mut c  = cs2.pop_front();
+                let (k, v) = c.get_min_descendant();
+                ks1.push(k);
+                vs1.push(v);
+                c.push_back_min_leaf(ks2.pop_front(), vs2.pop_front());
+                cs1.push(c);
+                // Special case that only happens when called from .merge().
+                if cs2.len() == 1 { cs1.push(cs2.pop()); }
+            },
+            (Leaf { keys: ks1, vals: vs1 },
+             Leaf { keys: ks2, vals: vs2 }) => {
+                ks1.push(ks2.pop_front());
+                vs1.push(vs2.pop_front());
+            },
+            _ => panic!("Invalid operands for Node::borrow_right()."),
+        }        
+    }
+
+    fn borrow_left(&mut self, left_sibling: &mut Self) {
+        match (self, left_sibling) {
+            (Branch { keys: ks1, vals: vs1, child: cs1 },
+             Branch { keys: ks2, vals: vs2, child: cs2 }) => {
+                let mut c  = cs2.pop();
+                let (k, v) = c.get_max_descendant();
+                ks1.push_front(k);
+                vs1.push_front(v);
+                c.push_front_max_leaf(ks2.pop(), vs2.pop());
+                cs1.push_front(c);  
+            },
+            (Leaf { keys: ks1, vals: vs1 },
+             Leaf { keys: ks2, vals: vs2 }) => {
+                ks1.push_front(ks2.pop());
+                vs1.push_front(vs2.pop());
+            },
+            _ => panic!("Invalid operands for Node::borrow_left()."),
+        }
+    }
 
     /// Combines the current node with `other`. The nodes must be of the same
     /// variant.
     /// 
-    #[allow(dead_code)]
     fn merge(&mut self, other: Self) {
         match (self, other) {
-            (Branch { keys: k1, vals: v1, child: c1 }, 
-             Branch { keys: k2, vals: v2, child: c2 }) => {
-                k1.merge(k2);
-                v1.merge(v2);
-                c1.merge(c2);
+            (    n1 @ Branch { .. }, 
+             mut n2 @ Branch { .. }) => {
+                while n2.n_keys() > 0 {
+                    n1.borrow_right(&mut n2);
+                }
              },
-             (Leaf { keys: k1, vals: v1 }, 
-              Leaf { keys: k2, vals: v2 }) => {
-                k1.merge(k2);
-                v1.merge(v2);
+             (Leaf { keys: ks1, vals: vs1 }, 
+              Leaf { keys: ks2, vals: vs2 }) => {
+                ks1.merge(ks2);
+                vs1.merge(vs2);
              },
             _ => panic!("Invalid operands for Node::merge()."),
         }
@@ -382,49 +454,87 @@ where
     /// Descends the tree from the current node to find it's maximum key.
     /// This key and its value are removed from their hosting node and returned.
     /// 
-    fn max_descendant(&mut self) -> (K, V) {
+    fn get_max_descendant(&mut self) -> (K, V) {
         let mut curr    = self; 
         let mut key_val = None;
         loop {
             match curr {
-                Branch { keys: _, vals: _, child } => {
-                    curr = child.last_mut().unwrap();
+                Branch { child, .. } => {
+                    curr = child.last_mut();
                 },
                 Leaf { keys, vals } => { 
-                    key_val = Some((keys.raw_pop(), vals.raw_pop()));
+                    key_val = Some((keys.pop(), vals.pop()));
                     break; 
                 },
-                Seed => { break; }
+                Seed => break,
             }
         }
         key_val.unwrap()
     }
-
 
     /// Descends the tree from the current node to find that branch's minimum
     /// key and its associated value. The key and value are removed from the 
     /// tree and returned.
     /// 
-    fn min_descendant(&mut self) -> (K, V) {
+    fn get_min_descendant(&mut self) -> (K, V) {
         let mut curr    = self;
         let mut key_val = None;
         loop {
             match curr {
-                Branch { keys: _, vals: _, child } => {
-                    curr = &mut child[0];
+                Branch { child, .. } => {
+                    curr = child.first_mut();
                 },
                 Leaf { keys, vals } => { 
-                    key_val = Some((keys.raw_pop_front(), 
-                                    vals.raw_pop_front()));
+                    key_val = Some((keys.pop_front(), 
+                                    vals.pop_front()));
                     break; 
                 },
-                Seed => { break; }
+                Seed => break,
             }
         }
         key_val.unwrap()
     }
-}
 
+    /// Locates the minimum descendant leaf of the node and pushes `key` and
+    /// `val` on the fronts of the respective array fields.
+    /// 
+    fn push_front_max_leaf(&mut self, key: K, val: V) {
+        let mut curr = self;
+        loop {
+            match curr {
+                Branch { child, .. } => {
+                    curr = child.last_mut();
+                },
+                Leaf { keys, vals } => {
+                    keys.push_front(key);
+                    vals.push_front(val);
+                    break;
+                },
+                Seed => break,
+            }
+        }
+    }
+
+    /// Locates the maximum descendant leaf and pushes `key` and `val` on the
+    /// front of their respective array fields.
+    /// 
+    fn push_back_min_leaf(&mut self, key: K, val: V) {
+        let mut curr = self;
+        loop {
+            match curr {
+                Branch { child, .. } => {
+                    curr = child.first_mut();
+                },
+                Leaf { keys, vals } => {
+                    keys.push(key);
+                    vals.push(val);
+                    break;
+                }
+                Seed => break,
+            }
+        }
+    }
+}
 impl<K, V, const M: usize, const N: usize> Default for Node<K, V, M, N> {
 
     /// Returns the default value for `Node`, which is the variant `Seed`.
@@ -453,11 +563,13 @@ where
         self.fields().if_some(|NodeFields { keys, vals, child }| {
         
             if vals.data_type_is_0_sized() {
-                let data = keys.into_iter().collect::<Vec<_>>();
-                builder.field("keys", &data);
+                builder.field("keys", 
+                              &keys.into_iter()
+                                   .collect::<Vec<_>>());
             } else {
-                let data = keys.into_iter().zip(vals).collect::<Vec<_>>();
-                builder.field("pairs", &data);
+                builder.field("pairs", 
+                              &keys.into_iter().zip(vals)
+                                   .collect::<Vec<_>>());
             }
             child.if_some(|child| { builder.field("child", child); });
         });
@@ -507,7 +619,7 @@ mod tests {
     fn insert() {
         let mut t = BTree3::new();
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
-            t.insert(n, n);
+            t.insert(n, ());
         }
         println!("{:#?}", t);
     }
@@ -516,7 +628,7 @@ mod tests {
     fn remove() {
         let mut t = BTree3::new();
         for n in [10, 20, 5, 6, 12, 30, 7, 17] {
-            t.insert(n, n);
+            t.insert(n, ());
         }
         /* t.remove(&6);
            t.remove(&7);
