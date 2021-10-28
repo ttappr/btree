@@ -147,8 +147,8 @@ pub enum Node<K, V, const M: usize, const N: usize> {
         vals  : Arr<V, M>, 
         child : Arr<Node<K, V, M, N>, N> },
     Leaf { 
-        keys: Arr<K, M>, 
-        vals: Arr<V, M> 
+        keys  : Arr<K, M>, 
+        vals  : Arr<V, M> 
     },
 }
 
@@ -213,7 +213,6 @@ where
     /// have the child array if the node was a `Branch`. A `Seed` node returns
     /// `None`.
     /// 
-    #[allow(dead_code)]
     fn fields_mut(&mut self) -> Option<NodeFieldsMut<K, V, M, N>>
     {
         match self {
@@ -392,7 +391,7 @@ where
                 else if keys.len() + child[0].n_keys() <= M {
                     let mut c = child.pop();
                     c.fields_mut()
-                             .map(|NodeFieldsMut { keys: ks, vals: vs, .. }| 
+                     .map(|NodeFieldsMut { keys: ks, vals: vs, .. }| 
                     {
                         ks.extend(keys);
                         vs.extend(vals);
@@ -506,8 +505,7 @@ where
                     curr = child.first_mut();
                 },
                 Leaf { keys, vals } => { 
-                    key_val = Some((keys.pop_front(), 
-                                    vals.pop_front()));
+                    key_val = Some((keys.pop_front(), vals.pop_front()));
                     break; 
                 },
                 Seed => break,
@@ -610,10 +608,10 @@ struct NodeFields<'a, K, V, const M: usize, const N: usize> {
 /// Internal struct returned by convenience methods to access fields of the 
 /// variants of `Node`. Mutable version.
 /// 
-#[allow(dead_code)]
 struct NodeFieldsMut<'a, K, V, const M: usize, const N: usize> {
     keys  : &'a mut Arr<K, M>,
     vals  : &'a mut Arr<V, M>,
+    #[allow(dead_code)]
     child : Option<&'a mut Arr<Node<K, V, M, N>, N>>,
 }
 
