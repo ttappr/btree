@@ -56,10 +56,14 @@ where
         }
     }
 
+    /// Returns a mutable reference to the last item in the array.
+    /// 
     pub(crate) fn last_mut(&mut self) -> &mut T {
         &mut self.arr.0[self.len() - 1]
     }
 
+    /// Returns a mutable reference to the first item in the array.
+    /// 
     pub(crate) fn first_mut(&mut self) -> &mut T {
         &mut self.arr.0[0]
     }
@@ -142,6 +146,20 @@ where
         self.arr.1 += other.arr.1;
     }
 
+    /// Transfers elements from `other` into `self`, appending them to `self`'s
+    /// internal array. 
+    /// 
+    pub(crate) fn extend(&mut self, other: &mut Self) {
+        debug_assert!(other.len() + self.len() <= S, 
+                      "Merging both `Arr` objects would result in an array 
+                      larger than the limit `S` ({}).", S);
+        for (i, j) in (self.len()..S).zip(0..other.len()) {
+            self.arr.0[i] = other.take(j);
+        }
+        self.arr.1 += other.arr.1;
+        other.arr.1 = 0;
+    }
+
     /// Appends the given element on to the end of the array.
     /// 
     pub(crate) fn push(&mut self, elm: T) {
@@ -213,6 +231,16 @@ where
         ret
     }
 }
+
+impl<T, const S: usize> Default for Arr<T, S> 
+where
+    T: Default,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, const S: usize> Index<usize> for Arr<T, S> {    
     type Output = T;
 

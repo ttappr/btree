@@ -363,7 +363,7 @@ where
     #[allow(dead_code)]
     fn feed(&mut self, i: usize) {
         match self {
-            Branch { child, .. } => {
+            Branch { keys, vals, child } => {
                 let last = child.len() - 1;
                 
                 if i > 0 && child[i - 1].n_keys() > M / 2 {
@@ -384,11 +384,24 @@ where
                     let c = child.remove(i);
                     child[i - 1].merge(c);
                 }
+                else if keys.len() + child[0].n_keys() <= M {
+                    let mut c = child.pop();
+                    c.fields_mut()
+                             .map(|NodeFieldsMut { keys: ks, vals: vs, .. }| 
+                    {
+                        ks.extend(keys);
+                        vs.extend(vals);
+                    }).unwrap();
+                    *self = c;
+                }
             }
             _ => panic!("Node::feed() invoked on a Leaf or Seed."),
         }
     }
     
+    /// Grabs a key/value and child, if there are any, from `right_sibling` 
+    /// and adds them to `self`.
+    ///
     fn borrow_right(&mut self, right_sibling: &mut Self) {
         match (self, right_sibling) {
             (Branch { keys: ks1, vals: vs1, child: cs1 },
@@ -411,6 +424,9 @@ where
         }        
     }
 
+    /// Grabs a key/value and child, if there are any, from `left_sibling` and
+    /// adds them to `self`.
+    ///
     fn borrow_left(&mut self, left_sibling: &mut Self) {
         match (self, left_sibling) {
             (Branch { keys: ks1, vals: vs1, child: cs1 },
@@ -627,17 +643,18 @@ mod tests {
     #[test] 
     fn remove() {
         let mut t = BTree3::new();
-        for n in [10, 20, 5, 6, 12, 30, 7, 17] {
+        let     a = [10, 20, 5, 6, 12, 30, 7, 17];
+        let     b = [10, 7, 12, 17, 5];
+
+        for n in a {
             t.insert(n, ());
         }
-        /* t.remove(&6);
-           t.remove(&7);
-           t.remove(&5); */
-        t.remove(&10);
-        t.remove(&7);
-        t.remove(&12);
-        t.remove(&17);
-        println!("{:#?}", t);
+        println!("Full tree: {:#?}", t);
+        for n in b {
+            println!("Removing {}...", n);
+            t.remove(&n);
+            println!("{:#?}", t);
+        }
     }
     
     #[test]
