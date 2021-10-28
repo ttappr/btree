@@ -151,7 +151,7 @@ where
     /// 
     pub(crate) fn extend(&mut self, other: &mut Self) {
         debug_assert!(other.len() + self.len() <= S, 
-                      "Merging both `Arr` objects would result in an array 
+                      "Extending `Arr` from `other` would result in an array 
                       larger than the limit `S` ({}).", S);
         for (i, j) in (self.len()..S).zip(0..other.len()) {
             self.arr.0[i] = other.take(j);

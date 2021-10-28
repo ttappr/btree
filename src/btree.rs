@@ -142,8 +142,14 @@ where
 /// 
 pub enum Node<K, V, const M: usize, const N: usize> {
     Seed,
-    Branch{ keys: Arr<K, M>, vals: Arr<V, M>, child: Arr<Node<K, V, M, N>, N> },
-    Leaf  { keys: Arr<K, M>, vals: Arr<V, M>                                  },
+    Branch { 
+        keys  : Arr<K, M>, 
+        vals  : Arr<V, M>, 
+        child : Arr<Node<K, V, M, N>, N> },
+    Leaf { 
+        keys: Arr<K, M>, 
+        vals: Arr<V, M> 
+    },
 }
 
 impl<K, V, const M: usize, const N: usize> Node<K, V, M, N> 
@@ -247,20 +253,20 @@ where
                             // key and value between `child[i]` and its new
                             // sibling, `ch`.
                             if keys.full() {
-                                let mut k1 = keys.splitter(i, k);
-                                let mut v1 = vals.splitter(i, v);
-                                let mut c1 = child.splitter(i + 1, ch);
+                                let mut ks1 = keys.splitter(i, k);
+                                let mut vs1 = vals.splitter(i, v);
+                                let mut cs1 = child.splitter(i + 1, ch);
 
-                                let k2 = k1.split_at(M / 2 + 1);
-                                let v2 = v1.split_at(M / 2 + 1);
-                                let c2 = c1.split_at(M / 2 + 1);
-                                let k  = k1.pop();
-                                let v  = v1.pop();
+                                let ks2 = ks1.split_at(M / 2 + 1);
+                                let vs2 = vs1.split_at(M / 2 + 1);
+                                let cs2 = cs1.split_at(M / 2 + 1);
+                                let k  = ks1.pop();
+                                let v  = vs1.pop();
 
                                 retval = Some((k, v, Branch {
-                                    keys  : k2.into_inner(),
-                                    vals  : v2.into_inner(),
-                                    child : c2.into_inner(),
+                                    keys  : ks2.into_inner(),
+                                    vals  : vs2.into_inner(),
+                                    child : cs2.into_inner(),
                                 }));
                             } else {
                                 keys.insert(i, k);
@@ -278,17 +284,17 @@ where
                     },
                     Err(i) => {
                         if keys.full() {
-                            let mut k1 = keys.splitter(i, key);
-                            let mut v1 = vals.splitter(i, val);
+                            let mut ks1 = keys.splitter(i, key);
+                            let mut vs1 = vals.splitter(i, val);
 
-                            let k2 = k1.split_at(M / 2 + 1);
-                            let v2 = v1.split_at(M / 2 + 1);
-                            let k  = k1.pop();
-                            let v  = v1.pop();
+                            let ks2 = ks1.split_at(M / 2 + 1);
+                            let vs2 = vs1.split_at(M / 2 + 1);
+                            let k  = ks1.pop();
+                            let v  = vs1.pop();
 
                             retval = Some((k, v, Leaf {
-                                keys  : k2.into_inner(),
-                                vals  : v2.into_inner(),
+                                keys  : ks2.into_inner(),
+                                vals  : vs2.into_inner(),
                             }));                            
                         } else {
                             keys.insert(i, key);
@@ -360,7 +366,6 @@ where
     /// could be merged with a sibling if neither adjacent sibling has enough 
     /// keys to spare.
     ///
-    #[allow(dead_code)]
     fn feed(&mut self, i: usize) {
         match self {
             Branch { keys, vals, child } => {
