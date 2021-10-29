@@ -392,7 +392,7 @@ where
                 else if keys.len() + child[0].n_keys() <= M {
                     // This case should cover the situation where the root node
                     // is running dry and needs to merge with its last child.
-                    // Its last child should be a leaf. Panic with diagnostic
+                    // Its last child should be a leaf - panic with diagnostic
                     // message if not.
                     let mut ch = child.pop();
                     match &mut ch {
@@ -401,7 +401,7 @@ where
                             vs.extend(vals);
                             *self = ch;
                         },
-                        _ => panic!("Encountered non-leaf node with fewere than
+                        _ => panic!("Encountered non-leaf node with fewer than
                                     order ({}) keys which had no siblings and
                                     couldn't be merged with its parent.", 
                                     M / 2),
