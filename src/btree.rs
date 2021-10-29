@@ -213,6 +213,7 @@ where
     /// have the child array if the node was a `Branch`. A `Seed` node returns
     /// `None`.
     /// 
+    #[allow(dead_code)]
     fn fields_mut(&mut self) -> Option<NodeFieldsMut<K, V, M, N>>
     {
         match self {
@@ -389,14 +390,18 @@ where
                     child[i - 1].merge(c);
                 }
                 else if keys.len() + child[0].n_keys() <= M {
-                    let mut c = child.pop();
-                    c.fields_mut()
-                     .map(|NodeFieldsMut { keys: ks, vals: vs, .. }| 
-                    {
-                        ks.extend(keys);
-                        vs.extend(vals);
-                    }).unwrap();
-                    *self = c;
+                    let mut ch = child.pop();
+                    match &mut ch {
+                        Leaf { keys: ks, vals: vs } => {
+                            ks.extend(keys);
+                            vs.extend(vals);
+                            *self = ch;
+                        },
+                        _ => panic!("Encountered non-leaf node with fewere than
+                                    order ({}) keys which had no siblings and
+                                    couldn't be merged with its parent.", 
+                                    M / 2),
+                    }
                 }
             }
             _ => panic!("Node::feed() invoked on a Leaf or Seed."),
@@ -608,10 +613,10 @@ struct NodeFields<'a, K, V, const M: usize, const N: usize> {
 /// Internal struct returned by convenience methods to access fields of the 
 /// variants of `Node`. Mutable version.
 /// 
+#[allow(dead_code)]
 struct NodeFieldsMut<'a, K, V, const M: usize, const N: usize> {
     keys  : &'a mut Arr<K, M>,
     vals  : &'a mut Arr<V, M>,
-    #[allow(dead_code)]
     child : Option<&'a mut Arr<Node<K, V, M, N>, N>>,
 }
 
