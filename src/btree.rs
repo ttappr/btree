@@ -391,7 +391,7 @@ where
                 }
                 else if keys.len() + child[0].n_keys() <= M {
                     // This case should cover the situation where the root node
-                    // is running dry and needs to merge with it's last child.
+                    // is running dry and needs to merge with its last child.
                     // Its last child should be a leaf. Panic with diagnostic
                     // message if not.
                     let mut ch = child.pop();
