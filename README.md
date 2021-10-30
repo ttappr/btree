@@ -3,8 +3,7 @@
 Work in progress.
 
 An experimental BTree implemented in Rust. Insertion and search work well, and
-removal works for the most part but needs some finishing touches to ensure
-the tree remains properly balanced during the operation.
+removal is currently broken.
 
 An interesting feature of this implementation is it allows developers to specify
 the order of the tree on creation. This implementation defines *order* as the 
